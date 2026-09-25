@@ -1,0 +1,21 @@
+{
+    "manifest_version": 3,
+    "name": "TT Safari Probe",
+    "description": "Logs which tab, navigation and visibility signals Safari on iOS actually delivers.",
+    "version": "0.1",
+
+    "background": {
+        "service_worker": "background.js"
+    },
+
+    "content_scripts": [
+        {
+            "js": ["content.js"],
+            "matches": ["<all_urls>"],
+            "run_at": "document_idle"
+        }
+    ],
+
+    "permissions": ["tabs", "storage", "alarms"],
+    "host_permissions": ["<all_urls>"]
+}
