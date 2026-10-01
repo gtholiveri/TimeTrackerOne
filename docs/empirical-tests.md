@@ -63,12 +63,8 @@ aren't valid JSON. (The analyzer repairs curly quotes, but don't rely on it.)
 `2026-09-25 14:03:11.123-04:00`. Referred to below as **TS**.
 
 **Log step** (used everywhere, after building the line as a `Text` action):
-`Append to Text File`: append the Text to `tt-log.txt` in the Shortcuts
+`Append to Text File`: append the Text to `tt-log.json` in the Shortcuts
 folder, with **Make New Line** on.
-
-Every line starts with `tt ` before the `{`. Without it, Shortcuts recognizes
-the text as JSON and saves a new `.json` file on every run instead of
-appending. The analyzer skips the prefix.
 
 Two things that go wrong when building these:
 - **Variables have to be inserted, not typed.** Where a line below says `TS`,
@@ -78,8 +74,8 @@ Two things that go wrong when building these:
   as a colored pill. If the log file contains the literal words `Formatted
   Date` or `Current App`, they were typed instead of inserted.
 - **Use `Append to Text File`, not `Save File`.** Save File never appends: each
-  run creates a new file. If you see files like `tt-log-jsonl-3.json`, the line
-  is missing its `tt ` prefix.
+  run creates a new file. Also keep the `.json` name: with `.jsonl`, Shortcuts
+  creates `tt-log-jsonl-1.json`, `-2`, … instead of appending.
 
 #### A-Open and A-Close (personal automations)
 
@@ -92,7 +88,7 @@ Actions:
 2. `Get Current App`
 3. `Text`:
    ```
-   tt {"src":"ios","kind":"open","ts":"TS","input":"Shortcut Input","cur":"Current App"}
+   {"src":"ios","kind":"open","ts":"TS","input":"Shortcut Input","cur":"Current App"}
    ```
    Insert the variables where the words are. For `Current App`, tap the
    variable and pick its name property. While you're there, note which other
@@ -113,7 +109,7 @@ Make **A-Close** the same way, with only **Is Closed** ticked and
    2. `Get Current App`
    3. `Text`:
       ```
-      tt {"src":"ios","kind":"poll","ts":"TS","cur":"Current App","run":"Run","tick":"Repeat Index","ctx":"Ctx"}
+      {"src":"ios","kind":"poll","ts":"TS","cur":"Current App","run":"Run","tick":"Repeat Index","ctx":"Ctx"}
       ```
    4. Log step
    5. `Wait` 10 seconds (use 5 for T1)
@@ -139,7 +135,7 @@ off → New Blank Automation → `Text` with a context label (for example
 
 After a test session, get the phone's log onto the computer: Files app → iCloud
 Drive → Shortcuts (or On My iPhone → Shortcuts if iCloud Drive is off) →
-`tt-log.txt` → Share → Save to OneDrive, or mail it to yourself. Save it next
+`tt-log.json` → Share → Save to OneDrive, or mail it to yourself. Save it next
 to the marker file, e.g. `logs/day1-phone.jsonl`. Then delete it on the phone
 so the next day starts with a fresh file.
 
