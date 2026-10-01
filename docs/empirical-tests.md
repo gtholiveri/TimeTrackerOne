@@ -157,27 +157,39 @@ python3 analyze.py logs/day1.jsonl --section sessions --section runs
 `--since` and `--until` take ISO times (`2026-09-25T14:00`), read as local time
 unless they carry an offset.
 
-### 4. The Xcode probe app (only for T10 and T12)
+### 4. The probe app (only for T10 and T12)
 
-Building anything that runs on the iPhone itself needs Xcode, so a Mac (your
-own, a borrowed one, or a rented cloud Mac). A free Apple ID is fine for these
-tests; apps signed that way stop launching after 7 days.
+The app (lock-probe action plus the Safari probe extension) is built by GitHub
+Actions on a macOS runner, so you don't need a Mac. The project is defined in
+`ios/project.yml`; the workflow is `.github/workflows/ios-probe.yml`.
 
-1. Xcode → New Project → iOS → **Safari Extension App** (Swift). Name it
-   `TTProbe`.
-2. In the extension target's Resources, replace `manifest.json`,
-   `background.js` and `content.js` with the files from `safari-probe/`. Delete
-   the template's popup files, or leave them; nothing references them. Set
-   `RECEIVER` at the top of `background.js`.
-3. Add `ios-probe-app/LockProbe.swift` to the **app** target. Call
-   `ProtectedCanary.ensure()` at launch, for example in `AppDelegate`'s
-   `application(_:didFinishLaunchingWithOptions:)`.
-4. If requests to a plain `http://` LAN address fail, either use the https
-   tunnel URL, or add `NSAppTransportSecurity` → `NSAllowsLocalNetworking` = YES
-   to the extension's Info.plist.
-5. Run it on the phone and open the app once. Then enable the extension:
-   Settings → Apps → Safari → Extensions → TT Safari Probe → on, **All
-   Websites: Allow**, and allow it in Private Browsing.
+**Build it with your receiver URL baked in:** on GitHub, open Actions → *iOS
+probe app* → *Run workflow*. Put the receiver URL in the box, e.g.
+`http://100.x.y.z:8787/log`, and run it. When it finishes, download the
+`TTProbe-unsigned-ipa` artifact from the run page and unzip it to get
+`TTProbe-unsigned.ipa`. Pushes to `main` also build it, with the placeholder
+URL from `background.js`.
+
+**Install it from Windows with [Sideloadly](https://sideloadly.io)**, which
+signs the app with your Apple ID (a free one works):
+
+1. Install Sideloadly, plus the non-Microsoft-Store versions of iTunes and
+   iCloud, which it needs for the USB connection.
+2. Plug in the iPhone, drop `TTProbe-unsigned.ipa` into Sideloadly, enter your
+   Apple ID, and start.
+3. On the iPhone, turn on Settings → Privacy & Security → **Developer Mode**
+   (it restarts the phone). Then trust your Apple ID under Settings → General →
+   VPN & Device Management.
+4. Open TT Probe once while unlocked. That creates the lock probe's canary file.
+5. Enable the extension: Settings → Apps → Safari → Extensions → TT Safari
+   Probe → on, **All Websites: Allow**, and allow it in Private Browsing.
+
+With a free Apple ID the app stops launching after 7 days; sideload it again to
+renew. If the Safari extension doesn't appear after sideloading, the
+extension most likely wasn't signed; check Sideloadly's log for the `.appex`.
+
+If plain `http://` requests from the extension fail, rebuild with an https
+tunnel URL instead.
 
 ## Tests
 
