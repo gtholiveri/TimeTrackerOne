@@ -1,0 +1,58 @@
+name: iOS probe app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - "test-harness/safari-probe/**"
+      - "test-harness/ios-probe-app/**"
+      - ".github/workflows/ios-probe.yml"
+  workflow_dispatch:
+    inputs:
+      receiver_url:
+        description: "Receiver URL baked into the Safari probe (e.g. http://100.x.y.z:8787/log)"
+        required: false
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set receiver URL
+        if: ${{ inputs.receiver_url != '' }}
+        env:
+          RECEIVER_URL: ${{ inputs.receiver_url }}
+        run: |
+          sed -i '' "s|^const RECEIVER = .*|const RECEIVER = \"${RECEIVER_URL}\";|" test-harness/safari-probe/background.js
+          grep -n '^const RECEIVER' test-harness/safari-probe/background.js
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned)
+        working-directory: ios
+        run: |
+          xcodebuild -version
+          xcodebuild build \
+            -project TTProbe.xcodeproj -scheme TTProbe -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package .ipa
+        working-directory: ios
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/TTProbe.app Payload/
+          ls Payload/TTProbe.app/PlugIns/TTProbeExtension.appex
+          zip -qry TTProbe-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TTProbe-unsigned-ipa
+          path: ios/TTProbe-unsigned.ipa
