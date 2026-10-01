@@ -108,6 +108,19 @@ class Rec:
         return tuple(str(d.get(k, "")) for k in ("src", "kind", "app", "input", "cur", "run", "tick", "page", "seq", "note", "url")) + (str(stamp),)
 
 
+def parse_line(line: str):
+    """Parse one log line. Phone lines start with "tt " before the JSON (so
+    Shortcuts treats them as text), and may have curly quotes from Smart
+    Punctuation."""
+    body = line[line.find("{"):] if "{" in line else line
+    for candidate in (body, body.translate(CURLY_QUOTES)):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def load(paths: list[str]) -> tuple[list[Rec], dict[str, int]]:
     by_key: dict[tuple, Rec] = {}
     per_file: dict[str, int] = {}
@@ -118,16 +131,10 @@ def load(paths: list[str]) -> tuple[list[Rec], dict[str, int]]:
                 line = line.strip()
                 if not line:
                     continue
-                try:
-                    d = json.loads(line)
-                except json.JSONDecodeError:
-                    # iPhone Smart Punctuation turns typed " into curly quotes.
-                    fixed = line.translate(CURLY_QUOTES)
-                    try:
-                        d = json.loads(fixed)
-                    except json.JSONDecodeError:
-                        print(f"warning: {path}:{lineno}: not JSON, skipped: {line[:80]}", file=sys.stderr)
-                        continue
+                d = parse_line(line)
+                if d is None:
+                    print(f"warning: {path}:{lineno}: not JSON, skipped: {line[:80]}", file=sys.stderr)
+                    continue
                 if not isinstance(d, dict):
                     continue
                 n += 1
