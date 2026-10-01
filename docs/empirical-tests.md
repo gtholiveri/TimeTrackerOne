@@ -43,8 +43,20 @@ python3 receiver.py --out logs/day1.jsonl
 
 Find the computer's LAN IP (`ipconfig` on Windows, `ipconfig getifaddr en0` on
 macOS) and use `http://<that-ip>:8787/log` as the URL in the shortcuts below.
-Open `http://<that-ip>:8787/` in Safari on the phone to check it's reachable.
 Allow Python through the Windows firewall on private networks when asked.
+
+**Check it from the phone:** open `http://<that-ip>:8787/` in Safari. Type the
+`http://` yourself: the receiver has no TLS, so `https://` just hangs, and the
+receiver prints a "tried https://" line. If Safari warns that the connection
+isn't secure, continue anyway. You should see a plain-text page reading
+`0 records written to logs/day1.jsonl`. Once records come in, they're listed
+below that line, newest first.
+
+**On campus or other big Wi-Fi networks,** the computer's IP can change between
+sessions. That breaks every shortcut that has the IP typed in. For tests that
+run over days, install [Tailscale](https://tailscale.com) on the computer and
+the phone and use the computer's Tailscale address (`100.x.y.z`) instead. It
+stays the same on any network, including when the phone is on cellular.
 
 - **Markers:** during a test, type what you're about to do into the receiver's
   terminal (for example `T3 lock via side button`) and press Enter. The analyzer

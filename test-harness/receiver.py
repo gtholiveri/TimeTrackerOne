@@ -23,6 +23,7 @@ import argparse
 import collections
 import json
 import os
+import socket
 import sys
 import threading
 from datetime import datetime, timezone
@@ -103,6 +104,20 @@ def make_handler(log: Log, token: str | None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):  # keep the terminal for records
             pass
+
+        def handle(self):
+            # A TLS handshake starts with byte 0x16: someone typed https://.
+            try:
+                first = self.connection.recv(1, socket.MSG_PEEK)
+            except OSError:
+                return
+            if first == b"\x16":
+                print(f"{self.client_address[0]} tried https:// - use http:// (this receiver has no TLS)", flush=True)
+                return
+            try:
+                super().handle()
+            except (ConnectionResetError, BrokenPipeError):
+                pass
 
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
