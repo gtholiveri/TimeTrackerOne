@@ -66,6 +66,16 @@ aren't valid JSON. (The analyzer repairs curly quotes, but don't rely on it.)
 `Append to Text File`: append the Text to `tt-log.jsonl` in the Shortcuts
 folder, with **Make New Line** on.
 
+Two things that go wrong when building these:
+- **Variables have to be inserted, not typed.** Where a line below says `TS`,
+  `Current App` or `Repeat Index`, put the cursor there and tap that variable in
+  the strip above the keyboard, or use **Select Variable** at the left end of
+  the strip and tap the action whose output you want. An inserted variable shows
+  as a colored pill. If the log file contains the literal words `Formatted
+  Date` or `Current App`, they were typed instead of inserted.
+- **Use `Append to Text File`, not `Save File`.** Save File never appends: each
+  run creates a new file (`tt-log.jsonl`, `tt-log 2.jsonl`, and so on).
+
 #### A-Open and A-Close (personal automations)
 
 Shortcuts → Automation → + → **App** → Choose: select every app (use the
