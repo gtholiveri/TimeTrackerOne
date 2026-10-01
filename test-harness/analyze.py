@@ -199,8 +199,9 @@ def header(title: str) -> None:
 def describe(r: Rec) -> str:
     skip = {"kind", "ts", "rx", "src", "peer", "path"}
     parts = [f"{k}={v}" for k, v in r.d.items() if k not in skip and v not in (None, "")]
-    if r.d.get("cur") == "":
-        parts.append("cur=<empty>")
+    for key in ("cur", "vis"):
+        if r.d.get(key) == "":
+            parts.append(f"{key}=<empty>")
     return " ".join(parts)
 
 
@@ -387,6 +388,11 @@ def section_apps(recs, args):
         print(f"{label}:")
         for v, n in c.most_common():
             print(f"  {n:>5}  {v}")
+    vis = Counter((show(r.d.get("cur")), show(r.d.get("vis"))) for r in recs if r.kind == "poll" and "vis" in r.d)
+    if vis:
+        print("polls, Get Current App vs Get Visible Apps:")
+        for (c, v), n in vis.most_common():
+            print(f"  {n:>5}  current={c}  visible={v}")
     probes = Counter(str(r.get("probe")) for r in recs if r.get("probe"))
     if probes:
         print("lock probe results: " + ", ".join(f"{k} x{n}" for k, n in probes.most_common()))
