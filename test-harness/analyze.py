@@ -43,6 +43,7 @@ from datetime import datetime, timedelta, timezone
 
 SECTIONS = ["summary", "timeline", "sessions", "closecur", "runs", "apps", "latency", "safari"]
 LOCAL_TZ = datetime.now().astimezone().tzinfo
+CURLY_QUOTES = str.maketrans({"\u201c": '"', "\u201d": '"', "\u201e": '"', "\u2033": '"'})
 
 
 # ---------------------------------------------------------------- loading
@@ -120,8 +121,13 @@ def load(paths: list[str]) -> tuple[list[Rec], dict[str, int]]:
                 try:
                     d = json.loads(line)
                 except json.JSONDecodeError:
-                    print(f"warning: {path}:{lineno}: not JSON, skipped: {line[:80]}", file=sys.stderr)
-                    continue
+                    # iPhone Smart Punctuation turns typed " into curly quotes.
+                    fixed = line.translate(CURLY_QUOTES)
+                    try:
+                        d = json.loads(fixed)
+                    except json.JSONDecodeError:
+                        print(f"warning: {path}:{lineno}: not JSON, skipped: {line[:80]}", file=sys.stderr)
+                        continue
                 if not isinstance(d, dict):
                     continue
                 n += 1

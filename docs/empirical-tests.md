@@ -54,9 +54,13 @@ uses that; see section 4.
 
 Every shortcut builds one JSON line and appends it to a file on the phone.
 
+**Before you start:** turn off Settings → General → Keyboard → **Smart
+Punctuation**. Otherwise the `"` you type become curly quotes and the log lines
+aren't valid JSON. (The analyzer repairs curly quotes, but don't rely on it.)
+
 **Timestamp** (used everywhere): `Current Date` → `Format Date`, Date Format
-*Custom*, format string `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`. That gives a value like
-`2026-09-25T14:03:11.123-04:00`. Referred to below as **TS**.
+*Custom*, format string `yyyy-MM-dd HH:mm:ss.SSSXXX`. That gives a value like
+`2026-09-25 14:03:11.123-04:00`. Referred to below as **TS**.
 
 **Log step** (used everywhere, after building the line as a `Text` action):
 `Append to Text File`: append the Text to `tt-log.jsonl` in the Shortcuts
