@@ -207,7 +207,8 @@ def section_summary(recs, per_file, args):
     no_ts = sum(1 for r in recs if r.t_from == "rx")
     if no_ts:
         print(f"{no_ts} records have no device ts (using receive time)")
-    if len(per_file) > 1:
+    # "Only in X" matters when files cover the same events (receiver vs on-device log).
+    if len(per_file) > 1 and any(len(r.files) > 1 for r in recs):
         for path in per_file:
             only = [r for r in recs if r.files == {path} and r.kind != "marker"]
             if only:

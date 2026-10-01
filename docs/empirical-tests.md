@@ -6,8 +6,8 @@ the most. The tools are in [`test-harness/`](../test-harness):
 
 | File | What it is |
 | --- | --- |
-| `receiver.py` | Webhook receiver. Logs every POST to a JSON-lines file with its arrival time. Type a line into its terminal to drop a timestamped marker. |
-| `analyze.py` | Reads receiver logs and the on-device log, merges them, and prints timelines, open/close pairing, polling-loop lifetimes, Get Current App values, latency and Safari signal counts. |
+| `receiver.py` | Records your markers: type a line into its terminal to log a timestamped label. Also receives the Safari probe's records over the network (T10). |
+| `analyze.py` | Merges the phone's log with the marker file and prints timelines, open/close pairing, polling-loop lifetimes, Get Current App values and Safari signal counts. |
 | `example-log.jsonl` | Made-up sample log. Run `python3 analyze.py example-log.jsonl` to see the output format. |
 | `safari-probe/` | Safari Web Extension that logs which tab, navigation and visibility signals iOS Safari actually delivers (T10). |
 | `ios-probe-app/LockProbe.swift` | App Intent that reports lock state from data protection (T12, only needed if T1 comes out badly). |
@@ -26,66 +26,41 @@ run them with `py` instead of `python3`.
 | **T2b:** new installs aren't covered automatically | Re-tick apps in both automations after installing something. |
 | **T4:** loops live N minutes in the background | Relaunch polling at least every N minutes from time-of-day automations. |
 | **T4:** app automations stall or queue while a loop runs | Polling can't overlap active use: only poll while locked (start from the close automation). |
-| **T4/T6:** a failed network request stops the shortcut | Shortcuts only write locally (the custom app's App Intent), and the app syncs to the server. Expected, and already the plan. |
 | **T10:** the background worker dies but content-script signals keep arriving | The Safari watcher is content-script driven, and the relay carries the last URL forward. The stock aw-watcher-web (background-driven) is not enough on iOS. |
 | **T11:** iPad split-screen apps each fire open/close, or `Visible` returns several apps | iPad needs "several apps visible at once" handling. |
 
 ## Setup (once)
 
-### 1. Run the receiver
+### 1. Markers on the computer
 
-On a computer on the same Wi-Fi as the phone:
+The phone logs everything to a file on itself, the way the real app will: no
+network involved, so Wi-Fi doesn't matter. The computer only records your
+**markers**: short labels you type with the time, which the analyzer lines up
+with the phone's log afterwards. Both clocks are set from the network, so they
+agree to within about a second.
 
 ```sh
-cd test-harness
-python3 receiver.py --out logs/day1.jsonl
+py test-harness/receiver.py --out logs/day1-markers.jsonl
 ```
 
-Find the computer's LAN IP (`ipconfig` on Windows, `ipconfig getifaddr en0` on
-macOS) and use `http://<that-ip>:8787/log` as the URL in the shortcuts below.
-Allow Python through the Windows firewall on private networks when asked.
+Before each step of a test, type what you're about to do (for example
+`T3 lock via side button`) and press Enter. The analyzer prints the phone's
+records grouped under these markers.
 
-**Check it from the phone:** open `http://<that-ip>:8787/` in Safari. Type the
-`http://` yourself: the receiver has no TLS, so `https://` just hangs, and the
-receiver prints a "tried https://" line. If Safari warns that the connection
-isn't secure, continue anyway. You should see a plain-text page reading
-`0 records written to logs/day1.jsonl`. Once records come in, they're listed
-below that line, newest first.
-
-**On campus or other big Wi-Fi networks,** the computer's IP can change between
-sessions. That breaks every shortcut that has the IP typed in. For tests that
-run over days, install [Tailscale](https://tailscale.com) on the computer and
-the phone and use the computer's Tailscale address (`100.x.y.z`) instead. It
-stays the same on any network, including when the phone is on cellular.
-
-- **Markers:** during a test, type what you're about to do into the receiver's
-  terminal (for example `T3 lock via side button`) and press Enter. The analyzer
-  prints records grouped under these markers.
-- **If plain http is refused** or you want to test away from home, put a tunnel
-  in front, for example `cloudflared tunnel --url http://localhost:8787`. It
-  prints an https URL; start the receiver with `--token <secret>` and append
-  `?token=<secret>` to the URL.
-- iOS may ask whether Shortcuts can find devices on your local network, and
-  whether each shortcut may connect to the IP. Allow both (Always Allow).
+The receiver also accepts records over the network. Only the Safari probe (T10)
+uses that; see section 4.
 
 ### 2. Build the shortcuts
 
-Every shortcut builds one JSON line. It appends that line to a file on the phone
-**first**, then POSTs the same text to the receiver. Keep that order: a failed
-`Get Contents of URL` stops the rest of the shortcut, and the on-device file is
-how T6 measures what the network lost.
+Every shortcut builds one JSON line and appends it to a file on the phone.
 
 **Timestamp** (used everywhere): `Current Date` → `Format Date`, Date Format
 *Custom*, format string `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`. That gives a value like
 `2026-09-25T14:03:11.123-04:00`. Referred to below as **TS**.
 
 **Log step** (used everywhere, after building the line as a `Text` action):
-1. `Append to Text File`: append the Text to `tt-log.jsonl` in the Shortcuts
-   folder, with **Make New Line** on.
-2. `Get Contents of URL`: your receiver URL, Method POST, header
-   `Content-Type: application/json`, Request Body *File*, set to the Text. If
-   your iOS version won't take Text as a file body, use Request Body *JSON* and
-   add the same fields there.
+`Append to Text File`: append the Text to `tt-log.jsonl` in the Shortcuts
+folder, with **Make New Line** on.
 
 #### A-Open and A-Close (personal automations)
 
@@ -143,15 +118,16 @@ off → New Blank Automation → `Text` with a context label (for example
 
 ### 3. Collect and analyze
 
-The receiver log is already on the computer. For the on-device log, open the
-Files app → iCloud Drive → Shortcuts (or On My iPhone → Shortcuts if iCloud
-Drive is off) → `tt-log.jsonl` → Share → AirDrop, Mail, or iCloud for Windows.
-Delete or rename it after each test day so logs stay separate.
+After a test session, get the phone's log onto the computer: Files app → iCloud
+Drive → Shortcuts (or On My iPhone → Shortcuts if iCloud Drive is off) →
+`tt-log.jsonl` → Share → Save to OneDrive, or mail it to yourself. Save it next
+to the marker file, e.g. `logs/day1-phone.jsonl`. Then delete it on the phone
+so the next day starts with a fresh file.
 
 ```sh
-python3 analyze.py logs/day1.jsonl device-day1.jsonl                  # everything
-python3 analyze.py logs/day1.jsonl --section timeline --since 2026-09-25T14:00   # one test
-python3 analyze.py logs/day1.jsonl --section sessions --section runs
+py test-harness/analyze.py logs/day1-phone.jsonl logs/day1-markers.jsonl       # everything
+py test-harness/analyze.py logs/day1-*.jsonl --section timeline --since 2026-09-25T14:00   # one test
+py test-harness/analyze.py logs/day1-*.jsonl --section sessions --section runs
 ```
 
 `--since` and `--until` take ISO times (`2026-09-25T14:00`), read as local time
@@ -188,12 +164,21 @@ With a free Apple ID the app stops launching after 7 days; sideload it again to
 renew. If the Safari extension doesn't appear after sideloading, the
 extension most likely wasn't signed; check Sideloadly's log for the `.appex`.
 
-If plain `http://` requests from the extension fail, rebuild with an https
-tunnel URL instead.
+**Connecting the Safari probe to the receiver.** This is the only test where
+the phone sends data to the computer. The simplest reliable route, on any
+network, is [Tailscale](https://tailscale.com) on both devices. Use the
+computer's Tailscale address in the workflow's receiver URL:
+`http://100.x.y.z:8787/log`. To check the connection, open
+`http://100.x.y.z:8787/` in Safari on the phone. You should see a plain-text
+page reading `N records written to ...`. Safari may silently try `https://`
+first; the receiver prints a `tried https://` line when it does. If plain
+`http://` won't work at all, put a tunnel such as `cloudflared tunnel --url
+http://localhost:8787` in front, start the receiver with `--token <secret>`, and
+use the tunnel's https URL with `?token=<secret>` appended.
 
 ## Tests
 
-For every test: start the receiver with a fresh `--out` file, type a marker
+For every test: start the receiver with a fresh marker file, type a marker
 before each step, and hold each state for at least 20 seconds, so a 5–10 s
 poll catches it more than once.
 
@@ -292,15 +277,11 @@ from `--section runs`:
 | `from-close` | Temporarily add `Run Shortcut TT Poll` to the end of A-Close, then lock | | |
 | `wait30` | `tod-locked` with Wait 30 s instead of 10 s. Is the limit wall-clock time or tick count? | | |
 
-**Concurrency** (during a `tod-unlocked` run): switch apps 5 times. In
-`--section latency` and `--section timeline`, do the open/close events arrive
-promptly while the loop runs, or only after it dies? Does starting an app
-automation kill the loop (the run ends right at your first switch)?
-
-**Network failure** (during a `tod-locked` run): turn on Airplane Mode for 60 s.
-If the run ends at that moment, the failed request killed it. Take the log step
-in TT Poll down to just the file append and rerun `tod-locked`: that matches the
-final design, where shortcuts only write locally.
+**Concurrency** (during a `tod-unlocked` run): switch apps 5 times, with a
+marker before each switch. In `--section timeline`, are the open/close
+timestamps within a couple of seconds of your markers? If they come late, the
+automations were queued behind the loop. Also, does starting an app automation
+kill the loop (the run ends right at your first switch)?
 
 **Overnight:** create time-of-day automations every 30 minutes from 00:00 to
 07:30, each launching TT Poll with `night` as input. In the morning, leave the
@@ -320,20 +301,20 @@ minute, then switch apps. Check:
   about drops here; timing precision doesn't matter.
 - **Normal hour:** no "closes with no matching open" except after unlocks, and
   no "opens that never closed" except the last one.
-- `--section latency` should show small receive delays and no negative ones. A
-  negative delay would mean a clock problem.
+- Timestamps should sit within a second or two of your markers. A consistent
+  large offset means the phone's or the computer's clock is off.
 
-### T6: Offline, and writes while locked
+### T6: Writes while locked, and offline
 
 **Steps:**
 1. Turn on Airplane Mode. Use three apps for about 5 minutes. Turn it off.
-2. Collect `tt-log.jsonl` and run `analyze.py receiver.jsonl device.jsonl`.
+2. Collect the log as usual.
 
 **Look at:**
-- `summary`: "only in device.jsonl" is what network-only logging would have
-  lost. `sessions` on the merged logs should be complete.
-- The device log should have ticks from T4's `tod-locked` run. That confirms the
-  file append works while the phone is locked.
+- The five Airplane Mode minutes should be complete in `--section sessions`.
+  Local writes shouldn't care about the network; this confirms it.
+- The log should have ticks from T4's `tod-locked` run. That confirms the file
+  append works while the phone is locked.
 
 ### T7: Power loss and reboot
 
