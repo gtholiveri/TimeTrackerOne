@@ -10,9 +10,10 @@ on the `shortcuts` pre-release. To install one, open its link on the iPhone:
 | TT Brightness | [TT-Brightness.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Brightness.shortcut) | Does Current Brightness read 0 with the screen off? |
 | TT Lock Direct | [TT-Lock-Direct.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Lock-Direct.shortcut) | Is Locked written every tick, but to iCloud Drive > Shortcuts. Survives locking? |
 | TT Lock Buffer | [TT-Lock-Buffer.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Lock-Buffer.shortcut) | Is Locked polled, nothing written while locked. Survives locking? |
+| TT Lock Watch | [TT-Lock-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Lock-Watch.shortcut) | The Lock Buffer recipe for an hour, logging only changes plus a heartbeat. How long does the loop live, and at what battery cost? |
 
-They write `tt|key=value|...` lines to `tt-bright.txt`, `tt-lockdirect.txt` and
-`tt-lockbuf.txt` in iCloud Drive > Shortcuts. `test-harness/analyze.py` reads
+They write `tt|key=value|...` lines to `tt-bright.txt`, `tt-lockdirect.txt`,
+`tt-lockbuf.txt` and `tt-watch.txt` in iCloud Drive > Shortcuts. `test-harness/analyze.py` reads
 them.
 
 - `tt-actions.cherri` declares Get Current App, Get Device Details and

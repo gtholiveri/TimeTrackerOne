@@ -54,6 +54,41 @@ shortcuts all write to iCloud Drive > Shortcuts:
   other folder.
 - **TT Lock Buffer:** Is Locked polled, nothing written while locked.
 
+## Trial 1 (2026-10-21): brightness, and Is Locked while writing
+
+Short locks (5–10 s per step).
+- **TT Brightness:** the loop kept writing through the lock (no Is Locked).
+  Brightness went 0.45 in an app, 0.3 with the screen off, 0.55 on the Lock
+  Screen. It never reads 0, so it can't detect the screen being off.
+- **TT Lock Direct:** five `locked=Yes` lines over about 10 s, then the loop
+  stopped at a permission prompt. It wrote to iCloud Drive, so **the folder
+  isn't the cause**: writing a file while locked with Is Locked in play is.
+- **TT Lock Buffer:** survived its short lock and read `No` about 2 s after
+  unlocking. Two bugs in the generated shortcuts showed up: the buffer was
+  written as a list (iOS asked "Choose an item" and kept one line), and the
+  file-write actions had no UUID (permission prompts every run). Both fixed.
+
+## Trial 2 (2026-10-21): the Lock Buffer recipe works
+
+Run 700434: **locked for 4 minutes, with 109 locked ticks in a row and none
+missing**, one every 2.28 s (max 2.34 s). The first `locked=No` came **2.3 s
+after the last `Yes`**: the unlock was seen within one tick. Quick lock/unlock
+cycles (run 684530) were caught too.
+
+- Permission prompts showed up as 7–9 s stalls: one early, and one on the first
+  write after the long lock. The following run had no stalls, so the grants
+  seem to stick now.
+- `cur` keeps reporting the last app while locked, as in T1.
+- Brightness: 0.25 the whole time the screen was off, 0.45 in use.
+
+**Recipe:** poll Device Is Locked every ~2 s, keep lines in memory while
+locked, and write only once it reads No. Never write a file while locked.
+
+Next: **TT Lock Watch** runs this for an hour, logging only changes plus a
+heartbeat every ~6 minutes. That keeps memory use flat during long locks
+(Trial 2 held about 16 KB of locked lines) and measures how long iOS lets the
+loop run, and the battery cost.
+
 ## Open questions, next tests
 
 1. **What triggers the banner: Is Locked, or the file write?** Run 1 wrote to

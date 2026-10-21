@@ -1,0 +1,60 @@
+/*
+TT Lock Watch: the Lock Buffer recipe, built to run for about an hour and log
+only changes. How long does iOS let the loop live, and what does it cost in
+battery?
+
+Every 2 s it reads Is Locked and the current app. A line is added only when
+either one changed, plus a heartbeat every 150 ticks (about 6 minutes), so a
+quiet stretch can be told apart from a dead loop. Lines are held in memory
+while locked and written to tt-watch.txt in iCloud Drive > Shortcuts as soon
+as Is Locked says No.
+    tt|src=ios|kind=change|ctx=lock-watch|run=<id>|ts=<time>|tick=<n>|locked=<Yes/No>|cur=<app>
+    tt|src=ios|kind=beat|...   (heartbeat, same fields)
+*/
+
+#define name TT Lock Watch
+#define color green
+
+#include 'actions/calendar'
+#include 'tt-actions.cherri'
+
+const run = randomNumber(100000, 999999)
+@buffer = []
+@pending = 0
+@sinceBeat = 0
+@lastState = "start"
+
+repeat i for 1600 {
+    const ts = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+    const locked = deviceDetail("Device Is Locked")
+    const cur = currentApp("Current")
+    @lockedText = "{locked}"
+    @state = "{locked}|{cur}"
+    @sinceBeat += 1
+
+    if @state != @lastState {
+        @buffer += "tt|src=ios|kind=change|ctx=lock-watch|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}"
+        @pending += 1
+        @lastState = @state
+    }
+    if @sinceBeat >= 150 {
+        @buffer += "tt|src=ios|kind=beat|ctx=lock-watch|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}"
+        @pending += 1
+        @sinceBeat = 0
+    }
+    if @lockedText == "No" {
+        if @pending > 0 {
+            // One text, not a list: a list makes Append to Text File ask "Choose an item".
+            const lines = joinText(@buffer, "\n")
+            const written1 = appendLine("tt-watch.txt", "{lines}")
+            @buffer = []
+            @pending = 0
+        }
+    }
+    wait(2)
+}
+
+const end = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+@buffer += "tt|src=ios|kind=poll.end|ctx=lock-watch|run={run}|ts={end}"
+const rest = joinText(@buffer, "\n")
+const written2 = appendLine("tt-watch.txt", "{rest}")
