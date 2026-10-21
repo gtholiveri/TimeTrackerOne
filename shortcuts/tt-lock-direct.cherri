@@ -19,9 +19,9 @@ repeat i for 120 {
     const locked = deviceDetail("Device Is Locked")
     const bright = deviceDetail("Current Brightness")
     const cur = currentApp("Current")
-    appendLine("tt-lockdirect.txt", "tt|src=ios|kind=poll|ctx=lock-direct|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}|bright={bright}")
+    const written1 = appendLine("tt-lockdirect.txt", "tt|src=ios|kind=poll|ctx=lock-direct|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}|bright={bright}")
     wait(2)
 }
 
 const end = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
-appendLine("tt-lockdirect.txt", "tt|src=ios|kind=poll.end|ctx=lock-direct|run={run}|ts={end}")
+const written2 = appendLine("tt-lockdirect.txt", "tt|src=ios|kind=poll.end|ctx=lock-direct|run={run}|ts={end}")

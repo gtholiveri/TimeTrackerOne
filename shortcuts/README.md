@@ -20,6 +20,14 @@ them.
   Cherri's built-in versions lack Device Is Locked and Make New Line.
 - Cherri reads `{...}` inside strings as variables, so the lines are key=value
   pairs, not JSON.
+- Cherri only gives an action an ID (UUID) when its output is used, but iOS
+  seems to remember "Always Allow" per action ID. So every file write captures
+  its output (`const written1 = appendLine(...)`), and CI compiles with
+  `--derive-uuids` so the IDs stay the same across rebuilds.
+- The "Nothing" actions in the compiled shortcuts are Cherri's: they stop one
+  action's output from flowing into the next as unintended input. Harmless.
+- Join a list before writing it (`joinText`): Append to Text File given a list
+  asks "Choose an item" and writes only the one you pick.
 - To find the identifiers for another action, build it once on the phone, share
   the shortcut as an iCloud link, and read
   `https://www.icloud.com/shortcuts/api/records/<id>`: its `shortcut` field

@@ -20,9 +20,9 @@ repeat i for 120 {
     const ts = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
     const bright = deviceDetail("Current Brightness")
     const cur = currentApp("Current")
-    appendLine("tt-bright.txt", "tt|src=ios|kind=poll|ctx=brightness|run={run}|ts={ts}|tick={i}|cur={cur}|bright={bright}")
+    const written1 = appendLine("tt-bright.txt", "tt|src=ios|kind=poll|ctx=brightness|run={run}|ts={ts}|tick={i}|cur={cur}|bright={bright}")
     wait(2)
 }
 
 const end = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
-appendLine("tt-bright.txt", "tt|src=ios|kind=poll.end|ctx=brightness|run={run}|ts={end}")
+const written2 = appendLine("tt-bright.txt", "tt|src=ios|kind=poll.end|ctx=brightness|run={run}|ts={end}")

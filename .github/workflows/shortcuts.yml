@@ -39,7 +39,7 @@ jobs:
         run: |
           for f in tt-*.cherri; do
             [ "$f" = "tt-actions.cherri" ] && continue
-            cherri "$f" --share=anyone --no-ansi
+            cherri "$f" --share=anyone --derive-uuids --no-ansi
           done
           mkdir -p ../out
           for f in *.shortcut; do

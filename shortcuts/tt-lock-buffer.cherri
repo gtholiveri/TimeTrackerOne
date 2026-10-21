@@ -1,9 +1,13 @@
 /*
-TT Lock Buffer: Is Locked polled every 2 s, but nothing is written while
-locked. Lines collect in a variable and are written out as soon as Is Locked
-says No. If locked lines appear after an unlock, polling Is Locked is fine
-and only writing while locked was the problem. Appends to tt-lockbuf.txt in
-iCloud Drive > Shortcuts for about 5 minutes:
+TT Lock Buffer: does a loop that polls Is Locked survive a long lock if it
+writes nothing while locked, and does it see the unlock right away?
+
+Every 2 s for about 6 minutes it reads Is Locked, brightness and the current
+app, and adds a line to a buffer. Whenever Is Locked reads "No", the buffer is
+joined into one text and appended to tt-lockbuf.txt in iCloud Drive >
+Shortcuts. So nothing is written while locked, and every tick ends up in the
+file, locked ones included. A tick whose Is Locked read failed shows up as
+"locked=" with nothing after it.
     tt|src=ios|kind=poll|ctx=lock-buffer|run=<id>|ts=<time>|tick=<n>|locked=<Yes/No>|cur=<app>|bright=<0..1>
 */
 
@@ -21,18 +25,18 @@ repeat i for 150 {
     const locked = deviceDetail("Device Is Locked")
     const bright = deviceDetail("Current Brightness")
     const cur = currentApp("Current")
-    @line = "tt|src=ios|kind=poll|ctx=lock-buffer|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}|bright={bright}"
+    @buffer += "tt|src=ios|kind=poll|ctx=lock-buffer|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}|bright={bright}"
     @lockedText = "{locked}"
-    if @lockedText == "Yes" {
-        @buffer += @line
-    } else {
-        appendLine("tt-lockbuf.txt", "{@buffer}")
-        appendLine("tt-lockbuf.txt", "{@line}")
+    if @lockedText == "No" {
+        // One text, not a list: a list makes Append to Text File ask "Choose an item".
+        const lines = joinText(@buffer)
+        const written1 = appendLine("tt-lockbuf.txt", "{lines}")
         @buffer = []
     }
     wait(2)
 }
 
 const end = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
-appendLine("tt-lockbuf.txt", "{@buffer}")
-appendLine("tt-lockbuf.txt", "tt|src=ios|kind=poll.end|ctx=lock-buffer|run={run}|ts={end}")
+@buffer += "tt|src=ios|kind=poll.end|ctx=lock-buffer|run={run}|ts={end}"
+const rest = joinText(@buffer)
+const written2 = appendLine("tt-lockbuf.txt", "{rest}")
