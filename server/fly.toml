@@ -1,6 +1,6 @@
 # Fly.io: one small always-on machine with a 1 GB volume for both databases.
 # See server/README.md, "Deploy on Fly.io". Change `app` to a name of your own.
-app = "tt-relay-CHANGE-ME"
+app = "tt-relay-gabe"
 primary_region = "lax"
 
 [build]
