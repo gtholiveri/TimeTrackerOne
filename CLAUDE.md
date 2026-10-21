@@ -3,7 +3,7 @@
 Screen-time tracking across iPhone and desktop, built on ActivityWatch.
 README.md has the map; this is what an agent working here needs on top.
 
-- **Read `docs/architecture.md` first:** how the pieces fit, why each
+- **Read `docs/architecture-handoff.md` first:** how the pieces fit, why each
   decision went the way it did, what's proven on the phone, what's open, and
   how Gabe likes to work.
 - **Setting things up on Gabe's laptop:** follow `SETUP.md`.

@@ -3,7 +3,7 @@
 Written for a Claude Code session running on Gabe's Windows laptop, to do the
 installing and checking. The repo is at
 `C:\Users\gabeo\OneDrive\Desktop\Projects\Software\UniversalTimeTracker\TimeTrackerOne`.
-For what each piece is and why, read `docs/architecture.md` first. Work
+For what each piece is and why, read `docs/architecture-handoff.md` first. Work
 through the steps in order. Run each step's check before moving on.
 Steps marked **(Gabe)** need a person: start them, say exactly what to click
 or type, and wait.
