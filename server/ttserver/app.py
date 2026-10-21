@@ -252,10 +252,17 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
             if not self.authorized():
                 return self.send(401, "TimeTracker: sign in with any user name and the key as password.\n",
                                  extra={"WWW-Authenticate": 'Basic realm="TimeTracker"'})
+            # ActivityWatch refuses any browser Origin but its own address, so the
+            # web UI's queries and settings fail through here. The relay checks it
+            # instead: its own pages may write, other sites may not (they could
+            # ride the browser's saved sign-in), and ActivityWatch never sees it.
+            origin = self.headers.get("Origin")
+            if origin and urllib.parse.urlsplit(origin).netloc != self.headers.get("Host"):
+                return self.send(403, "cross-site request\n")
             try:
                 body = self.body()
                 conn = http.client.HTTPConnection(aw.hostname, aw.port or 80, timeout=60)
-                headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP_HEADERS}
+                headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP_HEADERS | {"origin"}}
                 headers["Host"] = "localhost:5600"
                 if aw_api_key:
                     headers["Authorization"] = f"Bearer {aw_api_key}"

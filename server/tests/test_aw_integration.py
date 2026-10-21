@@ -209,6 +209,18 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("hostname", json.loads(body))
 
+    def test_proxy_lets_the_relays_own_pages_post(self):
+        # ActivityWatch rejects any browser Origin but its own address; the
+        # web UI's queries and settings come from the relay's address instead.
+        auth = "Basic " + base64.b64encode(f"me:{KEY}".encode()).decode()
+        query = json.dumps({"timeperiods": ["2026-10-21T00:00:00Z/2026-10-22T00:00:00Z"],
+                            "query": ["RETURN = 1;"]}).encode()
+        headers = {"Authorization": auth, "Content-Type": "application/json"}
+        status, body = self.http("POST", "/api/0/query/", query, {**headers, "Origin": self.base})
+        self.assertEqual(status, 200, body)
+        status, _ = self.http("POST", "/api/0/query/", query, {**headers, "Origin": "https://elsewhere.example"})
+        self.assertEqual(status, 403)
+
 
 if __name__ == "__main__":
     unittest.main()
