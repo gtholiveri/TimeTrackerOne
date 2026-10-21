@@ -1,0 +1,78 @@
+name: Shortcuts
+
+# Builds the test shortcuts in shortcuts/*.cherri into signed .shortcut files
+# and publishes them on the "shortcuts" release, so they install from the
+# iPhone with one tap. A manual run can also dump an existing shortcut from an
+# iCloud link into the log, to see the exact action identifiers it uses.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "shortcuts/**"
+      - ".github/workflows/shortcuts.yml"
+  workflow_dispatch:
+    inputs:
+      icloud_link:
+        description: "Optional iCloud link to a shortcut to dump (https://www.icloud.com/shortcuts/...)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dump shortcut from iCloud link
+        if: ${{ inputs.icloud_link != '' }}
+        env:
+          LINK: ${{ inputs.icloud_link }}
+        run: |
+          id="${LINK##*/}"
+          curl -fsSL "https://www.icloud.com/shortcuts/api/records/${id}" -o record.json
+          url=$(python3 -c "import json;r=json.load(open('record.json'));print(r['fields']['shortcut']['value']['downloadURL'])")
+          curl -fsSL "${url/\$\{f\}/x.shortcut}" -o dumped.shortcut
+          plutil -convert xml1 dumped.shortcut -o dumped.xml
+          echo "===== BEGIN SHORTCUT XML ====="
+          cat dumped.xml
+          echo "===== END SHORTCUT XML ====="
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build Cherri
+        run: |
+          git clone -q https://github.com/electrikmilk/cherri "$RUNNER_TEMP/cherri"
+          git -C "$RUNNER_TEMP/cherri" checkout -q bcc0095754e2cc0baaeb4d93dae172b8153b4716
+          (cd "$RUNNER_TEMP/cherri" && go build -o cherri .)
+          echo "$RUNNER_TEMP/cherri" >> "$GITHUB_PATH"
+
+      - name: Compile and sign
+        run: |
+          mkdir -p out
+          shopt -s nullglob
+          files=(shortcuts/*.cherri)
+          if [ ${#files[@]} -eq 0 ]; then echo "No shortcuts/*.cherri files yet."; exit 0; fi
+          for f in "${files[@]}"; do
+            name=$(basename "$f" .cherri)
+            cherri "$f" --share=anyone --output="out/${name}.shortcut"
+            # Signed files are Apple Encrypted Archives ("AEA1"); unsigned ones are plists.
+            head -c 4 "out/${name}.shortcut" | xxd | head -1
+          done
+          ls -la out
+
+      - name: Publish to the "shortcuts" release
+        if: ${{ github.event_name == 'push' || inputs.icloud_link == '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          built=(out/*.shortcut)
+          if [ ${#built[@]} -eq 0 ]; then echo "Nothing to publish."; exit 0; fi
+          gh release view shortcuts >/dev/null 2>&1 || \
+            gh release create shortcuts --title "Test shortcuts" --notes "Open a .shortcut link on the iPhone to add it to Shortcuts." --prerelease
+          gh release upload shortcuts out/*.shortcut --clobber
