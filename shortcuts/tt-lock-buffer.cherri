@@ -29,7 +29,7 @@ repeat i for 150 {
     @lockedText = "{locked}"
     if @lockedText == "No" {
         // One text, not a list: a list makes Append to Text File ask "Choose an item".
-        const lines = joinText(@buffer)
+        const lines = joinText(@buffer, "\n")
         const written1 = appendLine("tt-lockbuf.txt", "{lines}")
         @buffer = []
     }
@@ -38,5 +38,5 @@ repeat i for 150 {
 
 const end = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
 @buffer += "tt|src=ios|kind=poll.end|ctx=lock-buffer|run={run}|ts={end}"
-const rest = joinText(@buffer)
+const rest = joinText(@buffer, "\n")
 const written2 = appendLine("tt-lockbuf.txt", "{rest}")
