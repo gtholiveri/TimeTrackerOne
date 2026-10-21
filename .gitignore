@@ -10,4 +10,5 @@ ios/Payload/
 ios/*.ipa
 ios/TTProbe/Info.plist
 ios/TTProbeExtension/Info.plist
-shortcuts/build/
+shortcuts/*.shortcut
+shortcuts/*_processed.cherri

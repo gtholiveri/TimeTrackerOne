@@ -1,0 +1,38 @@
+/*
+TT Lock Buffer: Is Locked polled every 2 s, but nothing is written while
+locked. Lines collect in a variable and are written out as soon as Is Locked
+says No. If locked lines appear after an unlock, polling Is Locked is fine
+and only writing while locked was the problem. Appends to tt-lockbuf.txt in
+iCloud Drive > Shortcuts for about 5 minutes:
+    tt|src=ios|kind=poll|ctx=lock-buffer|run=<id>|ts=<time>|tick=<n>|locked=<Yes/No>|cur=<app>|bright=<0..1>
+*/
+
+#define name TT Lock Buffer
+#define color red
+
+#include 'actions/calendar'
+#include 'tt-actions.cherri'
+
+const run = randomNumber(100000, 999999)
+@buffer = []
+
+repeat i for 150 {
+    const ts = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+    const locked = deviceDetail("Device Is Locked")
+    const bright = deviceDetail("Current Brightness")
+    const cur = currentApp("Current")
+    @line = "tt|src=ios|kind=poll|ctx=lock-buffer|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}|bright={bright}"
+    @lockedText = "{locked}"
+    if @lockedText == "Yes" {
+        @buffer += @line
+    } else {
+        appendLine("tt-lockbuf.txt", "{@buffer}")
+        appendLine("tt-lockbuf.txt", "{@line}")
+        @buffer = []
+    }
+    wait(2)
+}
+
+const end = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+appendLine("tt-lockbuf.txt", "{@buffer}")
+appendLine("tt-lockbuf.txt", "tt|src=ios|kind=poll.end|ctx=lock-buffer|run={run}|ts={end}")

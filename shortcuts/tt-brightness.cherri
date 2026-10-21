@@ -1,0 +1,28 @@
+/*
+TT Brightness: does Current Brightness read 0 while the screen is off?
+
+No Is Locked here (the T1 setup that wrote fine while locked). Every 2 s for
+about 4 minutes it appends to tt-bright.txt in iCloud Drive > Shortcuts:
+    tt|src=ios|kind=poll|ctx=brightness|run=<id>|ts=<time>|tick=<n>|cur=<app>|bright=<0..1>
+Key=value lines because Cherri reads {...} in strings as variables;
+test-harness/analyze.py reads them.
+*/
+
+#define name TT Brightness
+#define color blue
+
+#include 'actions/calendar'
+#include 'tt-actions.cherri'
+
+const run = randomNumber(100000, 999999)
+
+repeat i for 120 {
+    const ts = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+    const bright = deviceDetail("Current Brightness")
+    const cur = currentApp("Current")
+    appendLine("tt-bright.txt", "tt|src=ios|kind=poll|ctx=brightness|run={run}|ts={ts}|tick={i}|cur={cur}|bright={bright}")
+    wait(2)
+}
+
+const end = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+appendLine("tt-bright.txt", "tt|src=ios|kind=poll.end|ctx=brightness|run={run}|ts={end}")

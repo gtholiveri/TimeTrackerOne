@@ -1,0 +1,19 @@
+/*
+Action definitions shared by the TT test shortcuts. Cherri's built-in versions
+either lack these settings (Device Is Locked, Make New Line) or don't exist
+(Get Current App). Identifiers and settings match what the Shortcuts app
+writes, taken from TT Poll via its iCloud link.
+*/
+
+// Get Current App. scope: "Current" or "Visible".
+action 'getcurrentapp' currentApp(text scope: 'WFVisibleAppScope')
+
+// Get Device Details, e.g. "Device Is Locked" or "Current Brightness".
+action 'getdevicedetails' deviceDetail(text detail: 'WFDeviceDetail')
+
+// Append to Text File in the Shortcuts folder (iCloud Drive > Shortcuts),
+// with Make New Line on.
+action 'file.append' appendLine(text filePath: 'WFFilePath', text line: 'WFInput') {
+    "WFAppendFileWriteMode": "Append",
+    "WFAppendOnNewLine": true
+}

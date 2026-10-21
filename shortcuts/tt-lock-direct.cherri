@@ -1,0 +1,27 @@
+/*
+TT Lock Direct: Is Locked polled every 2 s and written straight to the file,
+like TT Poll, but to iCloud Drive > Shortcuts instead of On My iPhone.
+If this survives being locked while TT Poll didn't, the folder was the
+problem, not Is Locked. Appends to tt-lockdirect.txt for about 4 minutes:
+    tt|src=ios|kind=poll|ctx=lock-direct|run=<id>|ts=<time>|tick=<n>|locked=<Yes/No>|cur=<app>|bright=<0..1>
+*/
+
+#define name TT Lock Direct
+#define color orange
+
+#include 'actions/calendar'
+#include 'tt-actions.cherri'
+
+const run = randomNumber(100000, 999999)
+
+repeat i for 120 {
+    const ts = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+    const locked = deviceDetail("Device Is Locked")
+    const bright = deviceDetail("Current Brightness")
+    const cur = currentApp("Current")
+    appendLine("tt-lockdirect.txt", "tt|src=ios|kind=poll|ctx=lock-direct|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}|bright={bright}")
+    wait(2)
+}
+
+const end = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+appendLine("tt-lockdirect.txt", "tt|src=ios|kind=poll.end|ctx=lock-direct|run={run}|ts={end}")

@@ -1,14 +1,16 @@
 name: Shortcuts
 
-# Builds the test shortcuts defined in shortcuts/build.py, signs them with
-# Apple's `shortcuts sign` on a macOS runner, and publishes them on the
-# "shortcuts" pre-release so they install on the iPhone with one tap.
+# Compiles the test shortcuts in shortcuts/*.cherri with the Cherri compiler,
+# which signs them through RoutineHub's HubSign service (iOS only imports
+# signed shortcuts), and publishes them on the "shortcuts" pre-release:
+#   https://github.com/<owner>/<repo>/releases/download/shortcuts/<Name>.shortcut
+# Open one of those links on the iPhone to add the shortcut.
 
 on:
   push:
     branches: [main]
     paths:
-      - "shortcuts/build.py"
+      - "shortcuts/**"
       - ".github/workflows/shortcuts.yml"
   workflow_dispatch:
 
@@ -17,23 +19,35 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build
-        run: python3 shortcuts/build.py
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
 
-      - name: Sign
+      - name: Build Cherri
         run: |
-          sw_vers
-          mkdir -p shortcuts/dist
-          for f in shortcuts/build/*.shortcut; do
-            out="shortcuts/dist/$(basename "$f")"
-            shortcuts sign --mode anyone --input "$f" --output "$out"
-            # Signed shortcuts are Apple Encrypted Archives, starting with "AEA1".
-            echo "$(head -c 4 "$out")  $out  $(wc -c < "$out") bytes"
+          git clone -q https://github.com/electrikmilk/cherri "$RUNNER_TEMP/cherri"
+          git -C "$RUNNER_TEMP/cherri" checkout -q bcc0095754e2cc0baaeb4d93dae172b8153b4716
+          (cd "$RUNNER_TEMP/cherri" && go build -o cherri .)
+          echo "$RUNNER_TEMP/cherri" >> "$GITHUB_PATH"
+
+      - name: Compile and sign
+        working-directory: shortcuts
+        run: |
+          for f in tt-*.cherri; do
+            [ "$f" = "tt-actions.cherri" ] && continue
+            cherri "$f" --share=anyone --no-ansi
           done
+          mkdir -p ../out
+          for f in *.shortcut; do
+            # Signed shortcuts are Apple Encrypted Archives, starting with "AEA1".
+            [ "$(head -c 4 "$f")" = "AEA1" ] || { echo "$f is not signed"; exit 1; }
+            mv "$f" "../out/${f// /-}"
+          done
+          ls -la ../out
 
       - name: Publish to the "shortcuts" release
         env:
@@ -42,4 +56,4 @@ jobs:
           gh release view shortcuts >/dev/null 2>&1 || \
             gh release create shortcuts --title "Test shortcuts" --prerelease \
               --notes "Open a .shortcut link on the iPhone to add it to Shortcuts."
-          gh release upload shortcuts shortcuts/dist/*.shortcut --clobber
+          gh release upload shortcuts out/*.shortcut --clobber
