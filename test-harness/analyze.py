@@ -109,9 +109,12 @@ class Rec:
 
 
 def parse_line(line: str):
-    """Parse one log line. Phone lines start with "tt " before the JSON (so
-    Shortcuts treats them as text), and may have curly quotes from Smart
-    Punctuation."""
+    """Parse one log line: JSON (optionally after a "tt " prefix, possibly with
+    curly quotes from Smart Punctuation), or the key=value form written by
+    shortcuts/build.py: tt|kind=poll|ts=...|tick=3"""
+    if line.startswith("tt|"):
+        pairs = (part.split("=", 1) for part in line.split("|")[1:] if "=" in part)
+        return {k: v for k, v in pairs}
     body = line[line.find("{"):] if "{" in line else line
     for candidate in (body, body.translate(CURLY_QUOTES)):
         try:
