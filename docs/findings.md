@@ -36,6 +36,24 @@ logged to `tt-log.json` with `Append to Text File`.
 - **Close automations are reliable:** the app-closed automation fires reliably,
   even on a straight power-off.
 
+## Shortcuts are now generated from code (2026-10-21)
+
+The test shortcuts are Cherri sources in [`shortcuts/`](../shortcuts), signed by
+CI and published on the `shortcuts` pre-release: open a link on the iPhone to
+install. The action identifiers come from TT Poll (shared via iCloud):
+`getdevicedetails` with `Device Is Locked` / `Current Brightness`, and
+`getcurrentapp` with `Current` / `Visible`.
+
+**New hypothesis:** the folder may matter more than Is Locked. T1 run 1, which
+wrote fine while locked, wrote to iCloud Drive > Shortcuts. The failing
+Is Locked run wrote to On My iPhone > UniversalTimeTracker, and files stored on
+the device itself may be unwritable while the phone is locked. The three new
+shortcuts all write to iCloud Drive > Shortcuts:
+- **TT Brightness:** brightness only, no Is Locked.
+- **TT Lock Direct:** Is Locked written every tick, like TT Poll but in the
+  other folder.
+- **TT Lock Buffer:** Is Locked polled, nothing written while locked.
+
 ## Open questions, next tests
 
 1. **What triggers the banner: Is Locked, or the file write?** Run 1 wrote to
