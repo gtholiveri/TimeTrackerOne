@@ -5,6 +5,7 @@ automations, a companion app, a Safari extension) and desktop watchers, fused
 into ActivityWatch buckets by a relay that acts as one more watcher.
 
 Current stage: the pieces are built and being tried out on a real phone.
+How it fits together and why: [`docs/architecture.md`](docs/architecture.md).
 To install everything, follow [`SETUP.md`](SETUP.md); it's written so a local
 Claude Code session can do most of it.
 

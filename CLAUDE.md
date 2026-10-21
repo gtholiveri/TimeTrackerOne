@@ -3,6 +3,9 @@
 Screen-time tracking across iPhone and desktop, built on ActivityWatch.
 README.md has the map; this is what an agent working here needs on top.
 
+- **Read `docs/architecture.md` first:** how the pieces fit, why each
+  decision went the way it did, what's proven on the phone, what's open, and
+  how Gabe likes to work.
 - **Setting things up on Gabe's laptop:** follow `SETUP.md`.
 - **Secrets:** the relay keys live in `C:\Users\gabeo\tt-relay-keys.txt` and
   in Fly secrets. Never write them into the repo, a commit, or a shortcut
