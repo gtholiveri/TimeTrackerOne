@@ -221,8 +221,8 @@ Windows machine to try them on.
 - **Explain fully.** Write step-by-step instructions that don't assume he
   remembers earlier context. Over-compressed answers have been a problem.
 - **Prefer code to manual phone fiddling.** Generate shortcuts; give one-tap
-  links. He tests empirically on his own iPhone and emails the log files
-  (attachments to `gabriel.oliveri2006@gmail.com`).
+  links. He tests empirically on his own iPhone and emails himself the log
+  files.
 - **The repo is public.** No secrets, no real usage logs. Tests use synthetic
   data. Commit and push to `main`, with Gabe as the author.
 
