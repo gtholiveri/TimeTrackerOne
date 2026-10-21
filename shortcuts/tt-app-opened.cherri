@@ -18,4 +18,5 @@ const day = formatDate(CurrentDate, "Custom", "yyyy-MM-dd")
 const dev = deviceDetail("Device Name")
 const cur = currentApp("Current")
 const written1 = appendLine("tt-events-{day}.txt", "tt|src=ios|kind=open|dev={dev}|ts={ts}|input={ShortcutInput}|cur={cur}")
-const synced = run("TT Sync", written1)
+// The name iOS gives TT Sync on import, from its file name TT-Sync.shortcut.
+const synced = run("TT-Sync", written1)

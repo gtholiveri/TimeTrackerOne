@@ -76,7 +76,8 @@ repeat i for 100000 {
             @buffer = []
             @pending = 0
             if @sawLocked == 1 {
-                const synced = run("TT Sync", written1)
+                // The name iOS gives TT Sync on import, from its file name TT-Sync.shortcut.
+                const synced = run("TT-Sync", written1)
                 @sawLocked = 0
             }
         }

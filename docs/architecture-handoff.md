@@ -188,8 +188,10 @@ From [`findings.md`](findings.md), where the trials are written up:
 
 **Built but not yet run on the phone:**
 - TT Sync, including calling it by name from the other shortcuts. Cherri
-  writes the "Run Shortcut" action with the name only, which is the part most
-  likely to need a fix.
+  writes the "Run Shortcut" action with the name only. The first try on the
+  phone failed on exactly that: iOS names an imported shortcut after its file,
+  so it arrived as "TT-Sync" while the calls said "TT Sync". The calls now use
+  "TT-Sync"; not yet rerun.
 - The automations calling TT Sync while the phone locks.
 - TT Safari on iOS.
 - The relay on Fly.

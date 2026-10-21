@@ -23,8 +23,8 @@ with its URL and key at hand.
 
 1. **Add TT Sync first**, because the others run it by name. Open its link,
    tap *Add Shortcut*, and answer the question with
-   `https://<your relay>/tt/ingest?key=<TT_INGEST_KEY>`. Keep the name
-   "TT Sync".
+   `https://<your relay>/tt/ingest?key=<TT_INGEST_KEY>`. Keep the name it
+   arrives with, "TT-Sync": the others run it by that name.
 2. **Run TT Sync once by hand** (tap it in the Shortcuts app). iOS asks
    whether it may connect to your relay; choose *Always Allow*. If you skip
    this, the question pops up later in the middle of an automation.
@@ -78,6 +78,10 @@ They write `tt|key=value|...` lines to `tt-bright.txt`, `tt-lockdirect.txt`,
 - Join a list before writing it (`joinText`): Append to Text File given a list
   asks "Choose an item" and writes only the one you pick. Pass the separator
   explicitly; `joinText(@list)` crashes the pinned Cherri.
+- iOS names an imported shortcut after its file, and CI turns the spaces in
+  file names into dashes (GitHub would turn them into dots). So the shortcuts
+  arrive as TT-Sync, TT-Watch and so on, and `run(...)` must use those names:
+  `run("TT-Sync", ...)`, not `run("TT Sync", ...)`.
 - Secrets never go in the source: the release is public. TT Sync's relay URL
   is an import question (`#question`), answered when the shortcut is added.
 - To find the identifiers for another action, build it once on the phone, share
