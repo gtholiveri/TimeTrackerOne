@@ -12,7 +12,7 @@ on the `shortcuts` pre-release. To install one, open its link on the iPhone.
 | TT Sync | [TT-Sync.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Sync.shortcut) | Uploads what's new in today's log files to the relay. Asks for the relay URL when you add it. |
 | TT App Opened | [TT-App-Opened.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-App-Opened.shortcut) | Logs an app opening to `tt-events-<date>.txt`, then runs TT Sync. |
 | TT App Closed | [TT-App-Closed.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-App-Closed.shortcut) | Same, for an app closing (locking the phone counts). |
-| TT Watch | [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | The lock/app watcher (the Lock Buffer recipe), about an hour per launch. Logs changes to `tt-watch-<date>.txt` and runs TT Sync after each unlock. |
+| TT Watch | [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | The lock/app watcher (the Lock Buffer recipe). Runs until iOS stops it. Logs changes, and a heartbeat with the battery level, to `tt-watch-<date>.txt`, and runs TT Sync after each unlock. |
 
 How the relay combines them: [`docs/fusion.md`](../docs/fusion.md).
 
@@ -23,7 +23,8 @@ with its URL and key at hand.
 
 1. **Add TT Sync first**, because the others run it by name. Open its link,
    tap *Add Shortcut*, and answer the question with
-   `https://<your relay>/tt/ingest?key=<TT_KEY>`. Keep the name "TT Sync".
+   `https://<your relay>/tt/ingest?key=<TT_INGEST_KEY>`. Keep the name
+   "TT Sync".
 2. **Run TT Sync once by hand** (tap it in the Shortcuts app). iOS asks
    whether it may connect to your relay; choose *Always Allow*. If you skip
    this, the question pops up later in the middle of an automation.
@@ -33,8 +34,9 @@ with its URL and key at hand.
      **Run Immediately** → *Next* → pick **TT App Opened**.
    - Same again, ticking **Is Closed** only → **TT App Closed**.
    - Turn off *Notify When Run* on both.
-5. **Start TT Watch** by tapping it. It runs for about an hour. The current
-   TT Lock Watch test decides how it will restart itself.
+5. **Start TT Watch** by tapping it, once. It runs until iOS stops it; the
+   relay's `/tt/state` shows when its last line arrived. How it gets
+   restarted is still open.
 6. Open and close a couple of apps, then check
    `https://<your relay>/tt/state?key=<TT_KEY>`: your phone should be there,
    with its current app.

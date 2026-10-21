@@ -27,7 +27,10 @@ you / an agent   ◀──────────── /tt/state   ┘
 ## Endpoints
 
 `KEY` is the `TT_KEY` you set. Give it as `?key=`, as a bearer token, or as the
-password of HTTP basic auth (any user name).
+password of HTTP basic auth (any user name). If you also set `TT_INGEST_KEY`,
+that key works for the two upload endpoints and nothing else. Put it on the
+phone (TT Sync and TT Safari), so a key copied from there can't read your
+history.
 
 | | |
 | --- | --- |
@@ -52,11 +55,13 @@ plus a 1 GB volume).
    ```sh
    fly apps create <name>
    fly volumes create tt_data --size 1 --region lax --app <name>   # or a region near you
-   fly secrets set TT_KEY=$(openssl rand -hex 24) --app <name>
+   KEY=$(openssl rand -hex 24); INGEST=$(openssl rand -hex 24)
+   echo "TT_KEY=$KEY  TT_INGEST_KEY=$INGEST"   # save both: fly won't show them again
+   fly secrets set TT_KEY=$KEY TT_INGEST_KEY=$INGEST --app <name>
    fly deploy
    ```
-   Keep the key: `fly secrets` won't show it again. On Windows, generate one
-   with `python -c "import secrets; print(secrets.token_hex(24))"`.
+   On Windows, generate each key with
+   `python -c "import secrets; print(secrets.token_hex(24))"` and paste it in.
 4. Check it: open `https://<name>.fly.dev/tt/health`, then
    `https://<name>.fly.dev/` and sign in with any user name and the key as
    password. That is the ActivityWatch web UI.
@@ -69,6 +74,7 @@ server with ports 80 and 443 open):
 ```sh
 git clone https://github.com/gtholiveri/TimeTrackerOne && cd TimeTrackerOne/server/deploy
 echo "TT_KEY=$(openssl rand -hex 24)" > .env
+echo "TT_INGEST_KEY=$(openssl rand -hex 24)" >> .env
 echo "TT_DOMAIN=tt.example.com" >> .env   # no domain? use <server-ip>.sslip.io
 docker compose up -d --build
 ```
@@ -80,7 +86,8 @@ Ampere VM), build aw-server-rust from source instead.
 ## Point the phone at it
 
 1. **TT Sync:** when you add it, it asks for the ingest URL. Answer
-   `https://<your relay>/tt/ingest?key=<TT_KEY>`. To change it later, delete
+   `https://<your relay>/tt/ingest?key=<TT_INGEST_KEY>` (or `TT_KEY` if you
+   didn't set an ingest key). To change it later, delete
    and re-add TT Sync from its link.
 2. **TT Safari:** in Safari, tap the extensions button in the address bar →
    TT Safari, paste the same URL, and tap Save.
@@ -99,7 +106,8 @@ running on 5600, leave out `TT_AW_COMMAND`.
 
 | Variable | Default | |
 | --- | --- | --- |
-| `TT_KEY` | (required) | At least 16 characters. |
+| `TT_KEY` | (required) | At least 16 characters. Opens everything. |
+| `TT_INGEST_KEY` | | Optional, at least 16 characters. Upload endpoints only. |
 | `TT_DATA` | `data` | Folder for `tt.db` (the raw lines). |
 | `PORT` | `8080` | |
 | `TT_AW_URL` | `http://127.0.0.1:5600` | ActivityWatch's server. |

@@ -9,7 +9,11 @@ phone is locked (that is what made TT Lock Direct fail): lines wait in memory
 and are appended to tt-watch-<date>.txt in iCloud Drive > Shortcuts as soon as
 Is Locked reads No.
     tt|src=ios|kind=change|dev=<device>|run=<id>|ts=<time>|tick=<n>|locked=<Yes/No>|cur=<app>
-kind is start, change, beat or end. It runs about an hour per launch.
+kind is start, change, beat or end. The start line, and each beat taken while
+unlocked, also carry battery=<0-100>.
+
+It loops until iOS stops it (100000 ticks would be about 64 hours), so the
+last heartbeat in the log shows how long iOS let it run.
 
 After writing the lines from a locked stretch it runs TT Sync, because
 unlocking straight back into the same app fires no automation: without this,
@@ -21,20 +25,22 @@ fails (no network), this shortcut stops too.
 #define color blue
 
 #include 'actions/calendar'
+#include 'actions/device'
 #include 'actions/shortcuts'
 #include 'tt-actions.cherri'
 
 const run = randomNumber(100000, 999999)
 const dev = deviceDetail("Device Name")
 const started = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+const battery0 = getBatteryLevel()
 @buffer = []
-@buffer += "tt|src=ios|kind=start|dev={dev}|run={run}|ts={started}"
+@buffer += "tt|src=ios|kind=start|dev={dev}|run={run}|ts={started}|battery={battery0}"
 @pending = 1
 @sinceBeat = 0
 @lastState = "start"
 @sawLocked = 0
 
-repeat i for 1600 {
+repeat i for 100000 {
     const ts = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
     const locked = deviceDetail("Device Is Locked")
     const cur = currentApp("Current")
@@ -51,7 +57,13 @@ repeat i for 1600 {
         @lastState = @state
     }
     if @sinceBeat >= 150 {
-        @buffer += "tt|src=ios|kind=beat|dev={dev}|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}"
+        // Battery only while unlocked: nothing extra is read while locked.
+        @battery = ""
+        if @lockedText == "No" {
+            const level = getBatteryLevel()
+            @battery = "{level}"
+        }
+        @buffer += "tt|src=ios|kind=beat|dev={dev}|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}|battery={@battery}"
         @pending += 1
         @sinceBeat = 0
     }

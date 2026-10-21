@@ -22,8 +22,9 @@ minutes) so that a quiet stretch can be told apart from a watcher that died.
   the unlock. They arrive late but carry their own timestamps.
 - While locked, `Get Current App` keeps reporting the last app. Only
   `Device Is Locked` says the phone is locked.
-- One launch lasts 1600 ticks (about an hour). How long iOS lets it run, and
-  how it gets relaunched, is still being tested (TT Lock Watch).
+- It loops until iOS stops it. TT Lock Watch ran 48 minutes without slowing
+  down, locked or not (2.3 s per tick). How long iOS allows, and how to
+  relaunch it, is still being measured.
 
 **The automations (TT App Opened / TT App Closed)** log one line the instant
 any app opens or closes, with the app's name. They're reliable: T1b found that
@@ -156,8 +157,8 @@ each upload, and every 20 s:
 
 - **Home Screen vs. locked** is a guess whenever the watcher has no data for
   that moment (see step 3).
-- **The watcher isn't always running.** One launch lasts about an hour, and
-  how to relaunch it is still open. Without it, unlocking back into the same
+- **The watcher isn't always running.** iOS eventually stops it, and how to
+  relaunch it is still open. Without it, unlocking back into the same
   app is invisible, so that time counts as locked until the next app switch.
 - **TT Sync needs the network.** Offline, the lines stay on the phone and go
   up with the next sync that works. The relay asks for whole files when it

@@ -29,6 +29,7 @@ from ttserver.store import Store  # noqa: E402
 
 AW_SERVER = os.environ.get("AW_SERVER") or shutil.which("aw-server")
 KEY = "test-key-0123456789abcdef"
+INGEST_KEY = "ingest-only-0123456789abcdef"
 DEV = "Test iPhone"
 
 
@@ -62,7 +63,7 @@ class EndToEnd(unittest.TestCase):
             except Exception:
                 time.sleep(0.1)
         cls.relay = Relay(Store(os.path.join(cls.tmp, "tt.db")), cls.client)
-        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.relay, KEY, aw_url, None))
+        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.relay, KEY, aw_url, None, INGEST_KEY))
         cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
         threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
 
@@ -130,7 +131,7 @@ class EndToEnd(unittest.TestCase):
         pages = [{"src": "safari", "kind": k, "page": "p1", "seq": i, "url": "https://news.example/a",
                   "title": "A story", "vis": "visible", "ts": t(s).isoformat()}
                  for i, (k, s) in enumerate([("show", 10), ("beat", 25), ("beat", 40), ("beat", 55)])]
-        status, body = self.http("POST", f"/tt/safari?key={KEY}", json.dumps(pages).encode(),
+        status, body = self.http("POST", f"/tt/safari?key={KEY}&dev=Test%20iPhone", json.dumps(pages).encode(),
                                  {"Content-Type": "text/plain"})
         self.assertEqual(json.loads(body)["new"], 4)
         self.relay.sync_once()
@@ -153,6 +154,16 @@ class EndToEnd(unittest.TestCase):
         awsync.sync_device(self.client, "Long Phone", [longer], [], since, now)
         win = self.client.events("aw-watcher-window_Long-Phone", now - timedelta(hours=3), now)
         self.assertEqual([round(e["duration"]) for e in win], [5400])
+
+    def test_ingest_key_only_uploads(self):
+        body = line(datetime.now(timezone.utc), "open", input="Notes", cur="Notes").replace(
+            f"dev={DEV}", "dev=Key Phone").encode()
+        self.assertEqual(self.http("POST", f"/tt/ingest?key={INGEST_KEY}", body)[0], 200)
+        self.assertEqual(self.http("POST", f"/tt/safari?key={INGEST_KEY}", b"[]")[0], 200)
+        self.assertEqual(self.http("GET", f"/tt/state?key={INGEST_KEY}")[0], 401)
+        self.assertEqual(self.http("GET", f"/tt/lines?key={INGEST_KEY}")[0], 401)
+        auth = "Basic " + base64.b64encode(f"me:{INGEST_KEY}".encode()).decode()
+        self.assertEqual(self.http("GET", "/api/0/info", headers={"Authorization": auth})[0], 401)
 
     def test_proxy_needs_the_key(self):
         self.assertEqual(self.http("GET", "/api/0/info")[0], 401)

@@ -1,9 +1,11 @@
 # TT Safari
 
 The Safari extension for iOS. Every page reports when it's visible or hidden,
-its URL and title changes, and a beat every 15 s while visible; the background
-script uploads those to the relay (`/tt/safari`), keeping anything that fails
-in `storage.local` until the next try. The relay works out which page was on
+its URL and title changes, and a beat every 15 s while visible, posting each
+record straight to the relay (`/tt/safari`). Anything that fails goes to the
+background script, which keeps it in `storage.local` and retries. The page
+does the sending because iOS Safari suspends extension background scripts
+aggressively. The relay works out which page was on
 screen and clips it to the times the phone had Safari in front.
 
 It ships inside the iOS app (`ios/project.yml`; built by

@@ -2,7 +2,8 @@
 up to date. Also serves the ActivityWatch web UI behind the same key.
 
 Endpoints (KEY is TT_KEY; pass it as ?key=, a bearer token, or the password
-of HTTP basic auth):
+of HTTP basic auth). TT_INGEST_KEY, if set, works for the two POST endpoints
+only, so the key stored on the phone can't read anything back:
 
     POST /tt/ingest?key=KEY&file=NAME&lines=N&mode=tail|full&dev=DEVICE
         Body: raw tt|... lines from one of the phone's log files. With
@@ -146,7 +147,7 @@ def _iv(iv) -> dict:
             "state": iv.state, "app": iv.app, "confidence": iv.confidence}
 
 
-def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None):
+def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, ingest_key: str | None = None):
     aw = urllib.parse.urlsplit(aw_url)
 
     class Handler(BaseHTTPRequestHandler):
@@ -164,7 +165,8 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None):
         def query(self) -> dict[str, str]:
             return {k: v[-1] for k, v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
 
-        def authorized(self) -> bool:
+        def authorized(self, ingest: bool = False) -> bool:
+            """The full key opens everything; the ingest key (if set) only the upload endpoints."""
             supplied = self.query().get("key")
             auth = self.headers.get("Authorization", "")
             if auth.startswith("Bearer "):
@@ -174,7 +176,10 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None):
                     supplied = base64.b64decode(auth[6:]).decode().partition(":")[2]
                 except Exception:
                     pass
-            return bool(supplied) and hmac.compare_digest(supplied.encode(), key.encode())
+            if not supplied:
+                return False
+            keys = [key] + ([ingest_key] if ingest and ingest_key else [])
+            return any(hmac.compare_digest(supplied.encode(), k.encode()) for k in keys)
 
         def body(self) -> bytes:
             n = int(self.headers.get("Content-Length") or 0)
@@ -226,7 +231,7 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None):
         def do_POST(self):
             path = urllib.parse.urlsplit(self.path).path
             if path in ("/tt/ingest", "/tt/safari"):
-                if not self.authorized():
+                if not self.authorized(ingest=True):
                     return self.send(401, "bad key\n")
                 try:
                     body = self.body().decode("utf-8", "replace")
@@ -346,7 +351,10 @@ def main(argv=None) -> None:
     relay.wake.set()
 
     host, port = os.environ.get("TT_HOST", "0.0.0.0"), int(os.environ.get("PORT", os.environ.get("TT_PORT", 8080)))
-    server = ThreadingHTTPServer((host, port), make_handler(relay, key, aw_url, aw_api_key))
+    ingest_key = os.environ.get("TT_INGEST_KEY") or None
+    if ingest_key and len(ingest_key) < 16:
+        sys.exit("TT_INGEST_KEY must be at least 16 characters.")
+    server = ThreadingHTTPServer((host, port), make_handler(relay, key, aw_url, aw_api_key, ingest_key))
     log(f"tt-relay listening on {host}:{port}, ActivityWatch at {aw_url}, data in {data}")
     try:
         server.serve_forever()

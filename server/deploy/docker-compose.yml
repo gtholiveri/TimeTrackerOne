@@ -1,6 +1,7 @@
 # Any Linux VPS with Docker: the relay plus Caddy for HTTPS.
 #   cd server/deploy
 #   echo "TT_KEY=$(openssl rand -hex 24)" > .env
+#   echo "TT_INGEST_KEY=$(openssl rand -hex 24)" >> .env
 #   echo "TT_DOMAIN=tt.example.com" >> .env    # or <server-ip>.sslip.io if you have no domain
 #   docker compose up -d --build
 services:
@@ -9,6 +10,7 @@ services:
     restart: unless-stopped
     environment:
       TT_KEY: ${TT_KEY:?set TT_KEY in .env}
+      TT_INGEST_KEY: ${TT_INGEST_KEY:-}
     volumes:
       - tt-data:/data
 

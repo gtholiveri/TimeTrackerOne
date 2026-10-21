@@ -2,7 +2,13 @@
 // visible or hidden, URL changes (single-page apps included), title changes,
 // and a beat every 15 s while visible. The relay turns these into "which page
 // was on screen" and clips that to the times Safari was in front
-// (server/ttserver/web.py). Records go to background.js, which uploads them.
+// (server/ttserver/web.py).
+//
+// Each record is posted straight to the relay from here. Safari on iOS
+// suspends extension background scripts aggressively, so the page itself is
+// the reliable sender. If that fails (offline, or a site's security policy
+// blocks the request), the record goes to background.js, which queues it and
+// retries.
 
 const PAGE = Math.random().toString(36).slice(2, 10);
 let seq = 0;
@@ -17,8 +23,26 @@ function record(kind) {
   };
 }
 
+async function direct(rec) {
+  const { relay = "", key = "", dev = "" } = await browser.storage.local.get(["relay", "key", "dev"]);
+  if (!relay || !key) return false;
+  const url = `${relay.replace(/\/+$/, "")}/tt/safari?key=${encodeURIComponent(key)}` +
+    (dev ? `&dev=${encodeURIComponent(dev)}` : "");
+  try {
+    // text/plain keeps it a "simple" request (no CORS preflight); keepalive
+    // lets the "hide" record finish sending while the page goes away.
+    const res = await fetch(url, {
+      method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify([rec]), keepalive: true,
+    });
+    return res.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
 async function report(kind) {
   const rec = record(kind);
+  if (await direct(rec)) return;
   try {
     await browser.runtime.sendMessage({ type: "tt", rec });
   } catch (e) {

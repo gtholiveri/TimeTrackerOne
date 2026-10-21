@@ -89,6 +89,28 @@ heartbeat every ~6 minutes. That keeps memory use flat during long locks
 (Trial 2 held about 16 KB of locked lines) and measures how long iOS lets the
 loop run, and the battery cost.
 
+## TT Lock Watch (2026-10-21): the recipe holds for most of an hour
+
+Run 772864, started 13:43, still going at 14:31 when the log was sent: 1237
+ticks in 47.9 minutes. That's 2.325 s per tick on average, the same locked
+(2.27–2.31 s) as unlocked (2.33–2.35 s). iOS didn't slow the loop down while
+locked.
+
+- **Long locks survive:** 6.8 minutes and 18.1 minutes locked. The heartbeats
+  during the 18-minute lock (ticks 900, 1050, 1200) are all there.
+- **Unlocking straight back into the same app is caught:** three times
+  (Settings, Spotify, Gmail). That's the case the automations miss.
+- **Change-only logging keeps the buffer tiny:** the 18-minute lock produced
+  4 lines.
+- **Lifetime is still unknown:** TT Lock Watch stops itself at tick 1600
+  (about 14:45), so this run can't show when iOS would kill it. TT Watch now
+  loops until iOS stops it, and its last heartbeat will tell.
+- **Battery:** not logged. TT Watch now adds the battery level to its start
+  line and its unlocked heartbeats.
+
+The fusion code reconstructs this run as expected: Settings for 20.6 min,
+locked 18.1 min, and so on.
+
 ## The tracker, built on that recipe (2026-10-21)
 
 - **TT Watch** is TT Lock Watch for production: it logs changes and heartbeats
@@ -101,8 +123,8 @@ loop run, and the battery cost.
 - **TT Safari** (`safari-extension/`, shipped in the iOS app) sends page events
   straight to the relay.
 
-Still open: TT Lock Watch's one-hour run (lifetime and battery), which decides
-how TT Watch gets relaunched.
+Still open: how long iOS lets TT Watch run, which decides how it gets
+relaunched.
 
 ## Open questions, next tests
 
