@@ -155,10 +155,10 @@ and the lock-probe Shortcuts action for T12. GitHub Actions builds it on a
 macOS runner, so you don't need a Mac. The project is defined in
 `ios/project.yml`; the workflow is `.github/workflows/ios-app.yml`.
 
-**Get the build:** on GitHub, open Actions → *iOS app*, pick the latest run
-(pushes to `main` build it; *Run workflow* builds it on demand), download the
-`TimeTracker-unsigned-ipa` artifact and unzip it to get
-`TimeTracker-unsigned.ipa`. Nothing secret is baked in: the relay URL and key
+**Get the build:** download
+[TimeTracker-unsigned.ipa](https://github.com/gtholiveri/TimeTrackerOne/releases/download/ios-app/TimeTracker-unsigned.ipa)
+from the `ios-app` pre-release, which every push to `main` that touches the
+app updates. Nothing secret is baked in: the relay URL and key
 are entered in the extension's popup on the phone.
 
 **Install it from Windows with [Sideloadly](https://sideloadly.io)**, which

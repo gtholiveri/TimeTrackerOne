@@ -45,26 +45,48 @@ history.
 
 Fly runs the container on a small always-on machine with a disk, and gives it
 an HTTPS address. It costs about $2–3 a month (a shared-cpu-1x 256 MB machine
-plus a 1 GB volume).
+plus a 1 GB volume), and Fly asks for a card when you sign up.
 
-1. Install `flyctl` and sign up: <https://fly.io/docs/flyctl/install/>, then
-   `fly auth signup` (or `fly auth login`).
-2. Pick an app name and put it in `server/fly.toml` (`app = "..."`). The relay
-   will live at `https://<name>.fly.dev`.
-3. From the `server/` folder:
-   ```sh
-   fly apps create <name>
-   fly volumes create tt_data --size 1 --region lax --app <name>   # or a region near you
-   KEY=$(openssl rand -hex 24); INGEST=$(openssl rand -hex 24)
-   echo "TT_KEY=$KEY  TT_INGEST_KEY=$INGEST"   # save both: fly won't show them again
-   fly secrets set TT_KEY=$KEY TT_INGEST_KEY=$INGEST --app <name>
-   fly deploy
+**From Windows**, in PowerShell:
+
+1. Install flyctl, then open a **new** PowerShell window so it's on your PATH:
+   ```powershell
+   iwr https://fly.io/install.ps1 -useb | iex
    ```
-   On Windows, generate each key with
-   `python -c "import secrets; print(secrets.token_hex(24))"` and paste it in.
-4. Check it: open `https://<name>.fly.dev/tt/health`, then
-   `https://<name>.fly.dev/` and sign in with any user name and the key as
-   password. That is the ActivityWatch web UI.
+2. Sign up (or `fly auth login` if you have an account):
+   ```powershell
+   fly auth signup
+   ```
+3. Get the latest code and run the setup script. Pick an app name nobody else
+   has used; it becomes `https://<name>.fly.dev`.
+   ```powershell
+   cd <your TimeTrackerOne folder>
+   git pull
+   cd server
+   powershell -ExecutionPolicy Bypass -File deploy\fly-setup.ps1 -App tt-relay-<yourname>
+   ```
+   It creates the app and its disk, generates the two keys, deploys (the
+   image is built on Fly's side; the first build takes a few minutes), and
+   writes the keys and all the URLs you need to `tt-relay-keys.txt` in your
+   home folder. If the name is taken it stops at the first step; run it again
+   with another name.
+4. Check it: open `https://<name>.fly.dev/tt/health` (should say `"ok": true`),
+   then `https://<name>.fly.dev/` and sign in with any user name and `TT_KEY`
+   as password. That's the ActivityWatch web UI.
+
+Later updates: `git pull`, then `fly deploy` in the `server` folder.
+
+**By hand** (any OS), from the `server/` folder, after putting the app name in
+`fly.toml`:
+
+```sh
+fly apps create <name>
+fly volumes create tt_data --size 1 --region lax --app <name> --yes
+KEY=$(openssl rand -hex 24); INGEST=$(openssl rand -hex 24)
+echo "TT_KEY=$KEY  TT_INGEST_KEY=$INGEST"   # save both: fly won't show them again
+fly secrets set TT_KEY=$KEY TT_INGEST_KEY=$INGEST --app <name> --stage
+fly deploy --ha=false
+```
 
 ## Deploy on any Linux server
 
@@ -93,6 +115,30 @@ Ampere VM), build aw-server-rust from source instead.
    TT Safari, paste the same URL, and tap Save.
 
 Install and automation steps for the shortcuts: [`shortcuts/README.md`](../shortcuts/README.md).
+
+## The desktop
+
+The desktop is tracked by ActivityWatch's own watchers, writing to the
+ActivityWatch server on the computer as usual. `ttserver/mirror.py` copies
+those buckets to the relay every minute, so the relay's ActivityWatch has the
+phone and the computer together, and keeps the computer's history while it's
+off. It only reads from the local server, and it catches up after time
+offline.
+
+1. Install ActivityWatch: <https://activitywatch.net/downloads/> (Windows:
+   the `setup.exe`). It starts in the tray with the window and AFK watchers;
+   <http://localhost:5600> shows its dashboard. Let it start at login.
+2. For browser tabs, add the ActivityWatch Web Watcher extension
+   (Chrome Web Store, or Firefox Add-ons).
+3. Start the mirror (needs Python 3), in PowerShell from the `server` folder:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File deploy\desktop-mirror.ps1 -Relay https://<name>.fly.dev -Key <TT_KEY>
+   ```
+   It copies the last 30 days once, then keeps running in the background and
+   starts at every login. Its log is `%LOCALAPPDATA%\tt-mirror\mirror.log`.
+
+On macOS or Linux, run `python3 -m ttserver.mirror --relay ... --key ...` from
+the `server` folder at login instead.
 
 ## Run it locally
 

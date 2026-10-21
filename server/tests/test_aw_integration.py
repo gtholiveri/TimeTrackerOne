@@ -62,6 +62,18 @@ class EndToEnd(unittest.TestCase):
                 break
             except Exception:
                 time.sleep(0.1)
+        # A second server, standing in for the ActivityWatch on a laptop.
+        cls.desk_port = free_port()
+        cls.desk_proc = subprocess.Popen([AW_SERVER, "--host", "127.0.0.1", "--port", str(cls.desk_port),
+                                          "--dbpath", os.path.join(cls.tmp, "desk.db"), "--no-legacy-import"],
+                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cls.desk = awsync.AW(f"http://127.0.0.1:{cls.desk_port}")
+        for _ in range(100):
+            try:
+                cls.desk.info()
+                break
+            except Exception:
+                time.sleep(0.1)
         cls.relay = Relay(Store(os.path.join(cls.tmp, "tt.db")), cls.client)
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.relay, KEY, aw_url, None, INGEST_KEY))
         cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
@@ -70,8 +82,9 @@ class EndToEnd(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.httpd.shutdown()
-        cls.aw.terminate()
-        cls.aw.wait()
+        for proc in (cls.aw, cls.desk_proc):
+            proc.terminate()
+            proc.wait()
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def http(self, method, path, body=None, headers=None):
@@ -164,6 +177,30 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(self.http("GET", f"/tt/lines?key={INGEST_KEY}")[0], 401)
         auth = "Basic " + base64.b64encode(f"me:{INGEST_KEY}".encode()).decode()
         self.assertEqual(self.http("GET", "/api/0/info", headers={"Authorization": auth})[0], 401)
+
+    def test_mirror_copies_desktop_buckets_through_the_relay(self):
+        from ttserver.mirror import mirror_once
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        bucket = "aw-watcher-window_DESKTOP-TEST"
+        self.desk.ensure_bucket(bucket, "currentwindow", "DESKTOP-TEST", client="aw-watcher-window")
+        self.desk.insert(bucket, [awsync.event(now - timedelta(minutes=m + 1), now - timedelta(minutes=m),
+                                               {"app": "Code.exe", "title": f"file{m}.py"}) for m in range(5)])
+        remote = awsync.AW(self.base, api_key=KEY)  # through the relay, with the key
+        state = {}
+        mirror_once(self.desk, remote, state, timedelta(days=1))
+        copied = self.client.events(bucket, now - timedelta(hours=1), now)
+        self.assertEqual(sorted(e["data"]["title"] for e in copied), [f"file{m}.py" for m in range(5)])
+        self.assertEqual(self.client.buckets()[bucket]["hostname"], "DESKTOP-TEST")
+
+        # The watcher keeps extending its newest event; the copy follows without duplicates.
+        newest = max(self.desk.events(bucket, now - timedelta(hours=1), now), key=lambda e: e["timestamp"])
+        self.desk.insert(bucket, [{**newest, "duration": newest["duration"] + 30}])
+        result = mirror_once(self.desk, remote, state, timedelta(days=1), now + timedelta(seconds=40))
+        self.assertEqual(result[bucket], (1, 1))
+        copied = self.client.events(bucket, now - timedelta(hours=1), now + timedelta(hours=1))
+        self.assertEqual(len(copied), 5)
+        self.assertEqual(max(round(e["duration"]) for e in copied), 90)
+        self.assertEqual(mirror_once(self.desk, remote, state, timedelta(days=1))[bucket], (0, 0))
 
     def test_proxy_needs_the_key(self):
         self.assertEqual(self.http("GET", "/api/0/info")[0], 401)

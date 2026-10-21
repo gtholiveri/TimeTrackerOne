@@ -61,11 +61,14 @@ class AW:
         self.base = base.rstrip("/") + "/api/0"
         self.api_key = api_key
         self.timeout = timeout
+        # aw-server bound to localhost only accepts a localhost Host header.
+        self.local = urllib.parse.urlsplit(base).hostname in ("127.0.0.1", "localhost")
 
     def _req(self, method: str, path: str, body=None):
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data, method=method)
-        req.add_header("Host", "localhost:5600")  # aw-server bound to localhost checks Host
+        if self.local:
+            req.add_header("Host", "localhost:5600")
         if data is not None:
             req.add_header("Content-Type", "application/json")
         if self.api_key:
@@ -82,9 +85,12 @@ class AW:
     def info(self):
         return self._req("GET", "/info")
 
-    def ensure_bucket(self, bucket_id: str, type_: str, host: str) -> None:
+    def buckets(self) -> dict[str, dict]:
+        return self._req("GET", "/buckets/") or {}
+
+    def ensure_bucket(self, bucket_id: str, type_: str, host: str, client: str = CLIENT) -> None:
         self._req("POST", f"/buckets/{urllib.parse.quote(bucket_id)}",
-                  {"client": CLIENT, "type": type_, "hostname": host})
+                  {"client": client, "type": type_, "hostname": host})
 
     def events(self, bucket_id: str, start: datetime, end: datetime) -> list[dict]:
         q = urllib.parse.urlencode({"start": start.astimezone(timezone.utc).isoformat(),
@@ -92,8 +98,8 @@ class AW:
         return self._req("GET", f"/buckets/{urllib.parse.quote(bucket_id)}/events?{q}") or []
 
     def insert(self, bucket_id: str, events: list[dict]) -> None:
-        if events:
-            self._req("POST", f"/buckets/{urllib.parse.quote(bucket_id)}/events", events)
+        for k in range(0, len(events), 1000):  # keeps each request well under the relay's body limit
+            self._req("POST", f"/buckets/{urllib.parse.quote(bucket_id)}/events", events[k:k + 1000])
 
     def delete(self, bucket_id: str, event_id: int) -> None:
         self._req("DELETE", f"/buckets/{urllib.parse.quote(bucket_id)}/events/{event_id}")

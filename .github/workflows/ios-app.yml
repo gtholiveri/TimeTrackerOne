@@ -1,7 +1,9 @@
 name: iOS app
 
-# Builds the TimeTracker app (with the TT Safari extension) unsigned, as an
-# .ipa artifact to sideload (docs/empirical-tests.md, section 4).
+# Builds the TimeTracker app (with the TT Safari extension) unsigned, to
+# sideload (docs/empirical-tests.md, section 4). Builds from main are published
+# on the "ios-app" pre-release:
+#   https://github.com/<owner>/<repo>/releases/download/ios-app/TimeTracker-unsigned.ipa
 
 on:
   push:
@@ -12,6 +14,9 @@ on:
       - "test-harness/ios-probe-app/**"
       - ".github/workflows/ios-app.yml"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -49,3 +54,14 @@ jobs:
         with:
           name: TimeTracker-unsigned-ipa
           path: ios/TimeTracker-unsigned.ipa
+
+      - name: Publish to the "ios-app" release
+        if: github.ref == 'refs/heads/main'
+        working-directory: ios
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view ios-app >/dev/null 2>&1 || \
+            gh release create ios-app --title "iOS app" --prerelease \
+              --notes "Unsigned TimeTracker app with the TT Safari extension. Sideload it with Sideloadly."
+          gh release upload ios-app TimeTracker-unsigned.ipa --clobber
