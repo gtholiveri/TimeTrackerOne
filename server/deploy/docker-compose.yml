@@ -1,0 +1,27 @@
+# Any Linux VPS with Docker: the relay plus Caddy for HTTPS.
+#   cd server/deploy
+#   echo "TT_KEY=$(openssl rand -hex 24)" > .env
+#   echo "TT_DOMAIN=tt.example.com" >> .env    # or <server-ip>.sslip.io if you have no domain
+#   docker compose up -d --build
+services:
+  relay:
+    build: ..
+    restart: unless-stopped
+    environment:
+      TT_KEY: ${TT_KEY:?set TT_KEY in .env}
+    volumes:
+      - tt-data:/data
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    command: caddy reverse-proxy --from ${TT_DOMAIN:?set TT_DOMAIN in .env} --to relay:8080
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+
+volumes:
+  tt-data:
+  caddy-data:

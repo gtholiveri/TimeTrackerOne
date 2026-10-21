@@ -89,6 +89,21 @@ heartbeat every ~6 minutes. That keeps memory use flat during long locks
 (Trial 2 held about 16 KB of locked lines) and measures how long iOS lets the
 loop run, and the battery cost.
 
+## The tracker, built on that recipe (2026-10-21)
+
+- **TT Watch** is TT Lock Watch for production: it logs changes and heartbeats
+  to `tt-watch-<date>.txt`, and runs TT Sync after each locked stretch.
+- **TT App Opened / TT App Closed** log every open and close, for all apps, to
+  `tt-events-<date>.txt`.
+- **TT Sync** uploads the new lines of both files to the relay.
+- **The relay** (`server/`) runs remotely, fuses the streams
+  ([`fusion.md`](fusion.md)) and keeps ActivityWatch up to date.
+- **TT Safari** (`safari-extension/`, shipped in the iOS app) sends page events
+  straight to the relay.
+
+Still open: TT Lock Watch's one-hour run (lifetime and battery), which decides
+how TT Watch gets relaunched.
+
 ## Open questions, next tests
 
 1. **What triggers the banner: Is Locked, or the file write?** Run 1 wrote to

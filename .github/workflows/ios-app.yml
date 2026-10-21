@@ -1,0 +1,51 @@
+name: iOS app
+
+# Builds the TimeTracker app (with the TT Safari extension) unsigned, as an
+# .ipa artifact to sideload (docs/empirical-tests.md, section 4).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - "safari-extension/**"
+      - "test-harness/ios-probe-app/**"
+      - ".github/workflows/ios-app.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned)
+        working-directory: ios
+        run: |
+          xcodebuild -version
+          xcodebuild build \
+            -project TimeTracker.xcodeproj -scheme TimeTracker -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package .ipa
+        working-directory: ios
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/TimeTracker.app Payload/
+          ls Payload/TimeTracker.app/PlugIns/TTSafari.appex
+          test -f Payload/TimeTracker.app/PlugIns/TTSafari.appex/manifest.json
+          test ! -e Payload/TimeTracker.app/PlugIns/TTSafari.appex/README.md
+          zip -qry TimeTracker-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TimeTracker-unsigned-ipa
+          path: ios/TimeTracker-unsigned.ipa

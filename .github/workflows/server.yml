@@ -1,0 +1,44 @@
+name: Relay
+
+# Unit tests, the end-to-end test against ActivityWatch's released server,
+# and a build of the Docker image the relay deploys as.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/server.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Get aw-server-rust
+        run: |
+          curl -fsSL -o aw.zip https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-linux-x86_64.zip
+          unzip -q aw.zip -d "$RUNNER_TEMP"
+          echo "AW_SERVER=$RUNNER_TEMP/activitywatch/aw-server-rust/aw-server-rust" >> "$GITHUB_ENV"
+
+      - name: Tests
+        working-directory: server
+        run: python -m unittest discover -s tests -v
+
+      - name: Docker image
+        run: docker build -t tt-relay server/
+
+      - name: Docker smoke test
+        run: |
+          docker run -d --name relay -e TT_KEY=ci-key-0123456789abcdef -p 8080:8080 tt-relay
+          curl -fsS --retry 30 --retry-delay 1 --retry-all-errors localhost:8080/tt/health
+          # The relay reaches the ActivityWatch server inside the container, behind the key.
+          curl -fsS --retry 30 --retry-delay 1 --retry-all-errors -u x:ci-key-0123456789abcdef localhost:8080/api/0/info
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/api/0/info)" = 401
+          docker logs relay

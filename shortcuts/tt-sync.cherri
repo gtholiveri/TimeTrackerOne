@@ -1,0 +1,51 @@
+/*
+TT Sync: uploads what's new in today's two log files to the relay
+(server/README.md). TT App Opened and TT App Closed run it after logging, and
+TT Watch after each unlock, so the relay hears about every change within
+seconds.
+
+For each file it sends the last 20 lines plus the file's line count. If the
+relay is missing lines before those (the phone was offline, or this is the
+first sync of the day), it answers "full" and TT Sync sends the whole file.
+
+The relay URL and key are asked once, when you add the shortcut, so they never
+appear in the published file.
+*/
+
+#define name TT Sync
+#define color purple
+
+#question relayURL "Your relay's ingest URL with its key: https://<your relay>/tt/ingest?key=<TT_KEY>" "https://YOUR-RELAY/tt/ingest?key=YOUR-KEY"
+
+#include 'actions/calendar'
+#include 'actions/documents'
+#include 'actions/web'
+#include 'tt-actions.cherri'
+
+const base = text(relayURL)
+const day = formatDate(CurrentDate, "Custom", "yyyy-MM-dd")
+const dev = deviceDetail("Device Name")
+const devq = urlEncode(dev)
+
+@names = []
+@names += "tt-events-{day}.txt"
+@names += "tt-watch-{day}.txt"
+
+for name in @names {
+    const file = getFile("{name}", nil, false)
+    const lines = splitText(file, "\n")
+    const n = count(lines)
+    if n > 0 {
+        @body = "{file}"
+        if n > 20 {
+            const first = n - 19
+            const tail = getListItems(lines, first, n)
+            @body = joinText(tail, "\n")
+        }
+        const reply = fileRequest("{base}&file={name}&lines={n}&mode=tail&dev={devq}", "POST", @body)
+        @replyText = "{reply}"
+        if @replyText contains "full" {
+            const whole = fileRequest("{base}&file={name}&lines={n}&mode=full&dev={devq}", "POST", file)
+        }
+    }
+}

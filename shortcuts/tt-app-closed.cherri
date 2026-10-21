@@ -1,0 +1,21 @@
+/*
+TT App Closed: run by the "App is closed" personal automation (all apps, Run Immediately).
+Appends one line to tt-events-<date>.txt in iCloud Drive > Shortcuts, then
+runs TT Sync to upload it:
+    tt|src=ios|kind=close|dev=<device>|ts=<time>|input=<the app the automation passed>|cur=<Get Current App>
+The relay (server/) fuses these with TT Watch's lines.
+*/
+
+#define name TT App Closed
+#define color orange
+
+#include 'actions/calendar'
+#include 'actions/shortcuts'
+#include 'tt-actions.cherri'
+
+const ts = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+const day = formatDate(CurrentDate, "Custom", "yyyy-MM-dd")
+const dev = deviceDetail("Device Name")
+const cur = currentApp("Current")
+const written1 = appendLine("tt-events-{day}.txt", "tt|src=ios|kind=close|dev={dev}|ts={ts}|input={ShortcutInput}|cur={cur}")
+const synced = run("TT Sync", written1)

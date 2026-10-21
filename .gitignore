@@ -8,7 +8,11 @@ ios/*.xcodeproj/
 ios/build/
 ios/Payload/
 ios/*.ipa
-ios/TTProbe/Info.plist
-ios/TTProbeExtension/Info.plist
+ios/App/Info.plist
+ios/SafariExtension/Info.plist
 shortcuts/*.shortcut
 shortcuts/*_processed.cherri
+
+# relay data when run locally
+server/data/
+*.db

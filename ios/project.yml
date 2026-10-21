@@ -1,7 +1,8 @@
-# XcodeGen spec for the probe app used by tests T10 and T12.
-# CI generates TTProbe.xcodeproj from this (see .github/workflows/ios-probe.yml);
+# XcodeGen spec for the TimeTracker app, which carries the TT Safari extension
+# (safari-extension/) and the lock-probe Shortcuts action for test T12.
+# CI generates TimeTracker.xcodeproj from this (.github/workflows/ios-app.yml);
 # on a Mac: `brew install xcodegen && xcodegen generate` in this folder.
-name: TTProbe
+name: TimeTracker
 options:
   bundleIdPrefix: com.gtholiveri
   deploymentTarget:
@@ -9,59 +10,57 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.2"
+    CURRENT_PROJECT_VERSION: "2"
     TARGETED_DEVICE_FAMILY: "1,2"
 
 targets:
-  TTProbe:
+  TimeTracker:
     type: application
     platform: iOS
     sources:
-      - path: TTProbe
+      - path: App
       - path: ../test-harness/ios-probe-app/LockProbe.swift
     info:
-      path: TTProbe/Info.plist
+      path: App/Info.plist
       properties:
-        CFBundleDisplayName: TT Probe
+        CFBundleDisplayName: TimeTracker
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        NSAppTransportSecurity:
-          NSAllowsLocalNetworking: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.gtholiveri.ttprobe
+        PRODUCT_BUNDLE_IDENTIFIER: com.gtholiveri.timetracker
     dependencies:
-      - target: TTProbeExtension
+      - target: TTSafari
 
-  TTProbeExtension:
+  TTSafari:
     type: app-extension
     platform: iOS
     sources:
-      - path: TTProbeExtension
+      - path: SafariExtension
       # Copied flat into the extension bundle, where Safari looks for manifest.json.
-      - path: ../test-harness/safari-probe
+      - path: ../safari-extension
         buildPhase: resources
+        excludes:
+          - "*.md"
     info:
-      path: TTProbeExtension/Info.plist
+      path: SafariExtension/Info.plist
       properties:
-        CFBundleDisplayName: TT Safari Probe
+        CFBundleDisplayName: TT Safari
         NSExtension:
           NSExtensionPointIdentifier: com.apple.Safari.web-extension
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SafariWebExtensionHandler
-        NSAppTransportSecurity:
-          NSAllowsLocalNetworking: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.gtholiveri.ttprobe.extension
+        PRODUCT_BUNDLE_IDENTIFIER: com.gtholiveri.timetracker.safari
 
 schemes:
-  TTProbe:
+  TimeTracker:
     build:
       targets:
-        TTProbe: all
-        TTProbeExtension: all
+        TimeTracker: all
+        TTSafari: all

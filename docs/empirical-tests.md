@@ -6,10 +6,10 @@ the most. The tools are in [`test-harness/`](../test-harness):
 
 | File | What it is |
 | --- | --- |
-| `receiver.py` | Records your markers: type a line into its terminal to log a timestamped label. Also receives the Safari probe's records over the network (T10). |
+| `receiver.py` | Records your markers: type a line into its terminal to log a timestamped label. Also receives the old Safari probe's records over the network. |
 | `analyze.py` | Merges the phone's log with the marker file and prints timelines, open/close pairing, polling-loop lifetimes, Get Current App values and Safari signal counts. |
 | `example-log.jsonl` | Made-up sample log. Run `python3 analyze.py example-log.jsonl` to see the output format. |
-| `safari-probe/` | Safari Web Extension that logs which tab, navigation and visibility signals iOS Safari actually delivers (T10). |
+| `safari-probe/` | The first Safari Web Extension probe, posting to the receiver. Superseded by TT Safari (`safari-extension/`), which T10 now uses. |
 | `ios-probe-app/LockProbe.swift` | App Intent that reports lock state from data protection (T12, only needed if T1 comes out badly). |
 
 Both Python scripts use only the standard library (Python 3.8+). On Windows,
@@ -47,8 +47,8 @@ Before each step of a test, type what you're about to do (for example
 `T3 lock via side button`) and press Enter. The analyzer prints the phone's
 records grouped under these markers.
 
-The receiver also accepts records over the network. Only the Safari probe (T10)
-uses that; see section 4.
+The receiver also accepts records over the network; only the old Safari probe
+used that. TT Safari sends to the relay instead (section 4).
 
 ### 2. Build the shortcuts
 
@@ -148,48 +148,45 @@ py test-harness/analyze.py logs/day1-*.jsonl --section sessions --section runs
 `--since` and `--until` take ISO times (`2026-09-25T14:00`), read as local time
 unless they carry an offset.
 
-### 4. The probe app (only for T10 and T12)
+### 4. The iOS app (TT Safari, and the T12 lock probe)
 
-The app (lock-probe action plus the Safari probe extension) is built by GitHub
-Actions on a macOS runner, so you don't need a Mac. The project is defined in
-`ios/project.yml`; the workflow is `.github/workflows/ios-probe.yml`.
+The TimeTracker app carries the **TT Safari** extension (`safari-extension/`)
+and the lock-probe Shortcuts action for T12. GitHub Actions builds it on a
+macOS runner, so you don't need a Mac. The project is defined in
+`ios/project.yml`; the workflow is `.github/workflows/ios-app.yml`.
 
-**Build it with your receiver URL baked in:** on GitHub, open Actions → *iOS
-probe app* → *Run workflow*. Put the receiver URL in the box, e.g.
-`http://100.x.y.z:8787/log`, and run it. When it finishes, download the
-`TTProbe-unsigned-ipa` artifact from the run page and unzip it to get
-`TTProbe-unsigned.ipa`. Pushes to `main` also build it, with the placeholder
-URL from `background.js`.
+**Get the build:** on GitHub, open Actions → *iOS app*, pick the latest run
+(pushes to `main` build it; *Run workflow* builds it on demand), download the
+`TimeTracker-unsigned-ipa` artifact and unzip it to get
+`TimeTracker-unsigned.ipa`. Nothing secret is baked in: the relay URL and key
+are entered in the extension's popup on the phone.
 
 **Install it from Windows with [Sideloadly](https://sideloadly.io)**, which
 signs the app with your Apple ID (a free one works):
 
 1. Install Sideloadly, plus the non-Microsoft-Store versions of iTunes and
    iCloud, which it needs for the USB connection.
-2. Plug in the iPhone, drop `TTProbe-unsigned.ipa` into Sideloadly, enter your
-   Apple ID, and start.
+2. Plug in the iPhone, drop `TimeTracker-unsigned.ipa` into Sideloadly, enter
+   your Apple ID, and start.
 3. On the iPhone, turn on Settings → Privacy & Security → **Developer Mode**
    (it restarts the phone). Then trust your Apple ID under Settings → General →
    VPN & Device Management.
-4. Open TT Probe once while unlocked. That creates the lock probe's canary file.
-5. Enable the extension: Settings → Apps → Safari → Extensions → TT Safari
-   Probe → on, **All Websites: Allow**, and allow it in Private Browsing.
+4. Open TimeTracker once while unlocked. That creates the lock probe's canary
+   file.
+5. Enable the extension: Settings → Apps → Safari → Extensions → **TT Safari**
+   → on, **All Websites: Allow**.
+6. In Safari, tap the extensions button in the address bar → TT Safari, paste
+   the relay URL TT Sync uses (`https://<relay>/tt/ingest?key=...`), and tap
+   Save. The popup shows how many records are waiting and when the last upload
+   worked.
 
 With a free Apple ID the app stops launching after 7 days; sideload it again to
 renew. If the Safari extension doesn't appear after sideloading, the
 extension most likely wasn't signed; check Sideloadly's log for the `.appex`.
 
-**Connecting the Safari probe to the receiver.** This is the only test where
-the phone sends data to the computer. The simplest reliable route, on any
-network, is [Tailscale](https://tailscale.com) on both devices. Use the
-computer's Tailscale address in the workflow's receiver URL:
-`http://100.x.y.z:8787/log`. To check the connection, open
-`http://100.x.y.z:8787/` in Safari on the phone. You should see a plain-text
-page reading `N records written to ...`. Safari may silently try `https://`
-first; the receiver prints a `tried https://` line when it does. If plain
-`http://` won't work at all, put a tunnel such as `cloudflared tunnel --url
-http://localhost:8787` in front, start the receiver with `--token <secret>`, and
-use the tunnel's https URL with `?token=<secret>` appended.
+The old Safari probe (`test-harness/safari-probe/`, posting to the local
+receiver) is no longer built: TT Safari sends the same signals to the relay,
+where `https://<relay>/tt/lines?key=...&source=safari` shows them raw.
 
 ## Tests
 
@@ -358,13 +355,19 @@ cadence T4 suggests and overnight. Compare Settings → Battery → Shortcuts, a
 the total. This decides how aggressively to poll, e.g. only while locked, or
 only when a resume is unresolved.
 
-### T10: Which Safari signals actually arrive? (probe app)
+### T10: Which Safari signals actually arrive? (TT Safari)
 
 **Why:** the stock aw-watcher-web depends on its background worker (tab events
 plus a 1-minute alarm), and background workers on iOS Safari are known to stop
-responding. This test shows which channel to build on.
+responding. TT Safari is built on the content script instead, with the
+background worker only uploading. This test checks that the content script's
+signals arrive, and which ones.
 
-**Steps**, with markers:
+**Setup:** the TimeTracker app installed with TT Safari pointed at the relay
+(section 4), and the tracker shortcuts running, so the relay knows when Safari
+is in front.
+
+**Steps:** note the time of each step.
 1. Open three sites in tabs, then switch between them.
 2. Navigate inside YouTube, Reddit or X. These change the URL without a page
    load.
@@ -377,16 +380,16 @@ responding. This test shows which channel to build on.
 9. Open a link inside an in-app browser (e.g. in Reddit's app). Expect nothing:
    this confirms that time counts toward that app.
 
-**Look at:** `--section safari --section runs --section timeline`.
-- `safari-bg` runs: how long the background worker stays alive, and whether the
-  alarm wakes it again.
-- **Dropped messages:** records missing by sequence number, i.e. messages from
-  the content script that never arrived.
-- **Channel:** did records arrive via `bg`, `pending` (parked and sent later) or
-  `direct` (if you set `DIRECT` in `content.js`)?
-- **URL changes:** does `safari.cs.url` catch in-page navigation that
-  `safari.tabs.updated` misses, or the other way round?
-- Does `safari.cs.visibility` fire when you leave Safari and when you lock?
+**Look at:** save `https://<relay>/tt/lines?key=<KEY>&source=safari&hours=2`
+and `https://<relay>/tt/state?key=<KEY>&hours=2`.
+- **Dropped records:** each page numbers its records (`page`, `seq`). Missing
+  numbers are records that never made it.
+- **Visibility:** is there a `hide` when you leave Safari and when you lock,
+  and a `show` when you come back?
+- **URL changes:** does `nav` catch in-page navigation (step 2)?
+- **Beats:** one every 15 s while a page is visible (step 5)? Any while the
+  phone was locked, or Safari in the background?
+- In `/tt/state`, does `safari_page` match what was on screen?
 
 ### T11: iPad
 

@@ -1,0 +1,30 @@
+# Fly.io: one small always-on machine with a 1 GB volume for both databases.
+# See server/README.md, "Deploy on Fly.io". Change `app` to a name of your own.
+app = "tt-relay-CHANGE-ME"
+primary_region = "lax"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[mounts]
+  source = "tt_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Always on: the relay keeps ActivityWatch current even when nothing is calling it.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "30s"
+    method = "GET"
+    path = "/tt/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

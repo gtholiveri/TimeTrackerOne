@@ -1,0 +1,79 @@
+/*
+TT Watch: the lock/app watcher. The TT Lock Buffer recipe from Trial 2, logging
+only changes.
+
+Every ~2 s it reads Device Is Locked and the current app. It adds a line when
+either changed, plus a heartbeat every 150 ticks (about 6 minutes), so a quiet
+stretch can be told apart from a dead watcher. Nothing is written while the
+phone is locked (that is what made TT Lock Direct fail): lines wait in memory
+and are appended to tt-watch-<date>.txt in iCloud Drive > Shortcuts as soon as
+Is Locked reads No.
+    tt|src=ios|kind=change|dev=<device>|run=<id>|ts=<time>|tick=<n>|locked=<Yes/No>|cur=<app>
+kind is start, change, beat or end. It runs about an hour per launch.
+
+After writing the lines from a locked stretch it runs TT Sync, because
+unlocking straight back into the same app fires no automation: without this,
+the relay wouldn't hear about the unlock until the next app switch. If TT Sync
+fails (no network), this shortcut stops too.
+*/
+
+#define name TT Watch
+#define color blue
+
+#include 'actions/calendar'
+#include 'actions/shortcuts'
+#include 'tt-actions.cherri'
+
+const run = randomNumber(100000, 999999)
+const dev = deviceDetail("Device Name")
+const started = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+@buffer = []
+@buffer += "tt|src=ios|kind=start|dev={dev}|run={run}|ts={started}"
+@pending = 1
+@sinceBeat = 0
+@lastState = "start"
+@sawLocked = 0
+
+repeat i for 1600 {
+    const ts = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+    const locked = deviceDetail("Device Is Locked")
+    const cur = currentApp("Current")
+    @lockedText = "{locked}"
+    @state = "{locked}|{cur}"
+    @sinceBeat += 1
+    if @lockedText == "Yes" {
+        @sawLocked = 1
+    }
+
+    if @state != @lastState {
+        @buffer += "tt|src=ios|kind=change|dev={dev}|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}"
+        @pending += 1
+        @lastState = @state
+    }
+    if @sinceBeat >= 150 {
+        @buffer += "tt|src=ios|kind=beat|dev={dev}|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}"
+        @pending += 1
+        @sinceBeat = 0
+    }
+    if @lockedText == "No" {
+        if @pending > 0 {
+            // One text, not a list: a list makes Append to Text File ask "Choose an item".
+            const lines = joinText(@buffer, "\n")
+            const day = formatDate(CurrentDate, "Custom", "yyyy-MM-dd")
+            const written1 = appendLine("tt-watch-{day}.txt", "{lines}")
+            @buffer = []
+            @pending = 0
+            if @sawLocked == 1 {
+                const synced = run("TT Sync", written1)
+                @sawLocked = 0
+            }
+        }
+    }
+    wait(2)
+}
+
+const ended = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+@buffer += "tt|src=ios|kind=end|dev={dev}|run={run}|ts={ended}"
+const rest = joinText(@buffer, "\n")
+const endDay = formatDate(CurrentDate, "Custom", "yyyy-MM-dd")
+const written2 = appendLine("tt-watch-{endDay}.txt", "{rest}")

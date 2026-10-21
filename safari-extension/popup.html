@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font: 15px -apple-system, system-ui, sans-serif; margin: 12px; min-width: 280px; color: #111; background: #fff; }
+  @media (prefers-color-scheme: dark) { body { color: #eee; background: #1c1c1e; } input { background: #2c2c2e; color: #eee; } }
+  label { display: block; margin: 10px 0 4px; font-weight: 600; }
+  input { width: 100%; box-sizing: border-box; padding: 8px; font-size: 15px; border: 1px solid #8884; border-radius: 8px; }
+  button { margin-top: 12px; padding: 8px 14px; font-size: 15px; border-radius: 8px; border: 0; background: #0a84ff; color: #fff; }
+  .hint { color: #888; font-size: 13px; margin-top: 4px; }
+  #status { margin-top: 12px; font-size: 13px; white-space: pre-line; }
+</style>
+</head>
+<body>
+  <label for="relay">Relay</label>
+  <input id="relay" placeholder="https://your-relay.fly.dev" autocapitalize="off" autocorrect="off">
+  <div class="hint">Paste the same URL TT Sync uses (…/tt/ingest?key=…) and the key is filled in for you.</div>
+  <label for="key">Key</label>
+  <input id="key" placeholder="TT_KEY" autocapitalize="off" autocorrect="off">
+  <label for="dev">Device name (optional)</label>
+  <input id="dev" placeholder="leave empty with one iPhone" autocapitalize="off" autocorrect="off">
+  <button id="save">Save</button>
+  <div id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
