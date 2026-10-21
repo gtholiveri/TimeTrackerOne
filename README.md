@@ -5,6 +5,8 @@ automations, a companion app, a Safari extension) and desktop watchers, fused
 into ActivityWatch buckets by a relay that acts as one more watcher.
 
 Current stage: the pieces are built and being tried out on a real phone.
+To install everything, follow [`SETUP.md`](SETUP.md); it's written so a local
+Claude Code session can do most of it.
 
 - [`server/`](server): the relay. Runs remotely (Fly.io), fuses the phone's
   logs ([`docs/fusion.md`](docs/fusion.md)), and keeps ActivityWatch up to
