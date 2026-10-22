@@ -1,8 +1,8 @@
 /*
 TT Sync: uploads what's new in today's two log files to the relay
-(server/README.md). TT App Opened and TT App Closed run it after logging, and
-TT Watch after each unlock, so the relay hears about every change within
-seconds.
+(server/README.md). TT App Opened and TT App Closed run it after logging, so
+the relay hears about every open and close within seconds. (TT Watch uploads
+its own file after each unlock, with the same protocol.)
 
 For each file it sends the last 20 lines plus the file's line count. If the
 relay is missing lines before those (the phone was offline, or this is the

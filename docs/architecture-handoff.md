@@ -52,8 +52,12 @@ REST API. Our relay is one more watcher, for the phone.
 
 While the phone is locked it writes nothing: lines wait in memory and are
 written right after the unlock, each with its own timestamp. After writing a
-locked stretch it runs TT Sync, because unlocking straight back into the same
-app fires no automation. It loops until iOS stops it.
+locked stretch it uploads its file itself, because unlocking straight back
+into the same app fires no automation. It doesn't run TT Sync for this: both
+runs that died on its first day died at an unlock where an automation's TT
+Sync ran in the same second (`findings.md`). It only uploads with a Wi-Fi
+network or some signal, since a failed request would stop the loop. It
+loops until iOS stops it.
 
 **TT App Opened / TT App Closed** are run by two personal automations (any
 app, Is Opened / Is Closed, Run Immediately). Each:
@@ -218,15 +222,17 @@ written), and the dashboard.
 
 ## Open questions and known limits
 
-- **How long iOS lets TT Watch run, and how it restarts.** TT Watch now loops
-  until stopped, so its last heartbeat will show the lifetime. Restart ideas,
-  none tried:
-  - time-of-day automations;
+- **How TT Watch gets restarted.** No time limit showed on its first day (one
+  run lasted at least 1 h 51 min); the deaths matched TT Sync collisions,
+  which TT Watch no longer risks. Restart ideas, none tried:
+  - time-of-day, wake-up and charger automations; first test what starting
+    TT Watch does while one is already running;
   - TT App Opened launching it when the relay reports the watcher dead.
     "Run Shortcut" waits for the child to finish, which complicates this.
-- **Offline.** TT Sync errors without network, and so does whatever ran it.
-  That means error banners offline, and TT Watch stops at its next unlock.
-  Nothing is lost.
+- **Offline.** TT Sync errors without network, and so does whatever ran it,
+  so the automations show error banners offline. TT Watch skips its upload
+  without Wi-Fi or signal and keeps going (Wi-Fi without internet still stops
+  it). Nothing is lost.
 - **Home Screen vs. locked** is a guess wherever the watcher has no data.
 - **iPad.** iCloud Drive > Shortcuts is shared across devices on one Apple ID,
   so an iPad would need its own file names.

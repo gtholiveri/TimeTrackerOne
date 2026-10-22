@@ -15,22 +15,36 @@ unlocked, also carry battery=<0-100>.
 It loops until iOS stops it (100000 ticks would be about 64 hours), so the
 last heartbeat in the log shows how long iOS let it run.
 
-After writing the lines from a locked stretch it runs TT Sync, because
+After writing the lines from a locked stretch it uploads its file, because
 unlocking straight back into the same app fires no automation: without this,
-the relay wouldn't hear about the unlock until the next app switch. If TT Sync
-fails (no network), this shortcut stops too.
+the relay wouldn't hear about the unlock until the next app switch. It does
+the upload itself (the same tail-then-full protocol as TT Sync) rather than
+running TT Sync: both of the runs that died on 2026-10-21 died at an unlock
+where an automation's TT Sync ran within a second of this one's, and none of
+the seven unlocks with no automation that close did.
+
+Shortcuts has no try/catch, and a failed request stops the whole loop. So it
+only uploads with a Wi-Fi network or at least one bar of signal; offline the
+lines stay in the file for the next sync that works. (Wi-Fi without internet
+still fails.)
 */
 
 #define name TT Watch
 #define color blue
 
+#question relayURL "Your relay's ingest URL with its key, the same one TT Sync uses: https://<your relay>/tt/ingest?key=<TT_INGEST_KEY>" "https://YOUR-RELAY/tt/ingest?key=YOUR-KEY"
+
 #include 'actions/calendar'
 #include 'actions/device'
-#include 'actions/shortcuts'
+#include 'actions/documents'
+#include 'actions/network'
+#include 'actions/web'
 #include 'tt-actions.cherri'
 
+const base = text(relayURL)
 const run = randomNumber(100000, 999999)
 const dev = deviceDetail("Device Name")
+const devq = urlEncode(dev)
 const started = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
 const battery0 = getBatteryLevel()
 @buffer = []
@@ -76,9 +90,28 @@ repeat i for 100000 {
             @buffer = []
             @pending = 0
             if @sawLocked == 1 {
-                // The name iOS gives TT Sync on import, from its file name TT-Sync.shortcut.
-                const synced = run("TT-Sync", written1)
                 @sawLocked = 0
+                // The offline guard: no Wi-Fi network and no signal, no request.
+                const wifi = getWifiDetail("Network Name")
+                const channel = getWifiDetail("Channel Number")
+                const bars = getCellularDetail("Number of Signal Bars")
+                if wifi || channel > 0 || bars > 0 {
+                    const name = "tt-watch-{day}.txt"
+                    const file = getFile("{name}", nil, false)
+                    const fileLines = splitText(file, "\n")
+                    const n = count(fileLines)
+                    @body = "{file}"
+                    if n > 20 {
+                        const first = n - 19
+                        const tail = getListItems(fileLines, first, n)
+                        @body = joinText(tail, "\n")
+                    }
+                    const reply = fileRequest("{base}&file={name}&lines={n}&mode=tail&dev={devq}", "POST", @body)
+                    @replyText = "{reply}"
+                    if @replyText contains "full" {
+                        const whole = fileRequest("{base}&file={name}&lines={n}&mode=full&dev={devq}", "POST", file)
+                    }
+                }
             }
         }
     }

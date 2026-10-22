@@ -12,7 +12,7 @@ on the `shortcuts` pre-release. To install one, open its link on the iPhone.
 | TT Sync | [TT-Sync.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Sync.shortcut) | Uploads what's new in today's log files to the relay. Asks for the relay URL when you add it. |
 | TT App Opened | [TT-App-Opened.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-App-Opened.shortcut) | Logs an app opening to `tt-events-<date>.txt`, then runs TT Sync. |
 | TT App Closed | [TT-App-Closed.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-App-Closed.shortcut) | Same, for an app closing (locking the phone counts). |
-| TT Watch | [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | The lock/app watcher (the Lock Buffer recipe). Runs until iOS stops it. Logs changes, and a heartbeat with the battery level, to `tt-watch-<date>.txt`, and runs TT Sync after each unlock. |
+| TT Watch | [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | The lock/app watcher (the Lock Buffer recipe). Runs until iOS stops it. Logs changes, and a heartbeat with the battery level, to `tt-watch-<date>.txt`, and uploads that file itself after each unlock (only with Wi-Fi or signal). Asks for the relay URL when you add it. |
 
 How the relay combines them: [`docs/fusion.md`](../docs/fusion.md).
 
@@ -28,15 +28,18 @@ with its URL and key at hand.
 2. **Run TT Sync once by hand** (tap it in the Shortcuts app). iOS asks
    whether it may connect to your relay; choose *Always Allow*. If you skip
    this, the question pops up later in the middle of an automation.
-3. **Add TT App Opened, TT App Closed and TT Watch** from their links.
+3. **Add TT App Opened, TT App Closed and TT Watch** from their links. TT
+   Watch asks for the same URL as TT Sync.
 4. **Create the two automations.** In Shortcuts → Automation → **+**:
    - **App** → *Choose* → select every app (or every app you care about) → tick **Is Opened** only →
      **Run Immediately** → *Next* → pick **TT App Opened**.
    - Same again, ticking **Is Closed** only → **TT App Closed**.
    - Turn off *Notify When Run* on both.
-5. **Start TT Watch** by tapping it, once. It runs until iOS stops it; the
-   relay's `/tt/state` shows when its last line arrived. How it gets
-   restarted is still open.
+5. **Start TT Watch** by tapping it, once, then lock the phone and unlock it.
+   The first upload after that unlock asks whether TT Watch may connect to
+   your relay; choose *Always Allow*. It runs until iOS stops it; the relay's
+   `/tt/state` shows when its last line arrived. How it gets restarted is
+   still open.
 6. Open and close a couple of apps, then check
    `https://<your relay>/tt/state?key=<TT_KEY>`: your phone should be there,
    with its current app.
@@ -44,10 +47,11 @@ with its URL and key at hand.
 If something misbehaves, `https://<your relay>/tt/lines?key=<TT_KEY>` shows
 exactly which lines arrived.
 
-**Known issue:** TT Sync fails without network, and so does whatever ran it.
-Offline, every app switch can show an error banner, and TT Watch stops after
-its next unlock. Nothing is lost: the lines stay in the files and go up with
-the next sync that works.
+**Known issue:** TT Sync fails without network, and so does whatever ran it,
+so offline every app switch can show an error banner. TT Watch skips its own
+upload when there's no Wi-Fi network and no signal, and keeps going; on Wi-Fi
+without internet it still stops at its next unlock. Nothing is lost: the
+lines stay in the files and go up with the next sync that works.
 
 ## Test shortcuts
 

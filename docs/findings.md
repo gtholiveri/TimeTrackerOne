@@ -126,6 +126,33 @@ locked 18.1 min, and so on.
 Still open: how long iOS lets TT Watch run, which decides how it gets
 relaunched.
 
+## TT Watch's first real day (2026-10-21): no time limit seen
+
+From the relay's copy of every line, with the time each one arrived:
+
+- **Longest run: at least 1 h 51 min** (run 875490, 16:27–18:18), through
+  locks of 14, 7 and 4 minutes, partly on the charger (33% → 82%). Ticks
+  averaged 2.42 s. Nothing suggests iOS stops the loop after a set time.
+- **How the two runs after setup ended:** both went silent right at an unlock,
+  the moment TT Watch writes its buffered lines and syncs:
+  - 875490: last line 18:18:53; locked 18:19:41; unlocked by 18:19:55, when
+    two automations (open and close Gmail) ran TT Sync in the same second.
+    TT Watch never logged that unlock, and the automations kept logging normal
+    use until 19:34.
+  - 927451: last line was the unlock at 16:15:27, with an automation 0.7 s
+    later. (This was also the hour TT Sync's name didn't match its callers,
+    so it's the weaker case.)
+  - The seven unlocks it survived all had the nearest automation 5.7 s or more
+    away.
+- **Hypothesis:** two copies of TT Sync at once (TT Watch's and an
+  automation's) make one fail, and a failing Run Shortcut stops TT Watch. TT
+  Watch now uploads its own file instead of running TT Sync, behind an offline
+  guard. The two runs that died during setup (seconds after starting, while
+  automations were being made in the Shortcuts app) aren't counted.
+- **How fast lines arrive** (received minus written): opens and closes 0.4 s
+  median, 5 s at p90; unlocks 1–8 s; watcher lines with no automation nearby
+  wait for the next sync, median 7 s but up to 12 min.
+
 ## Open questions, next tests
 
 1. **What triggers the banner: Is Locked, or the file write?** Run 1 wrote to
