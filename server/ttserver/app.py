@@ -17,6 +17,8 @@ only, so the key stored on the phone can't read anything back:
     GET  /tt/lines?key=KEY&source=ios|safari[&hours=24]
         The raw lines received, oldest first, for debugging.
     GET  /tt/health
+    GET  /app/
+        The dashboard (server/dashboard, built into dashboard/dist).
     Anything else: proxied to ActivityWatch (the web UI and its API).
 """
 
@@ -26,6 +28,7 @@ import base64
 import hmac
 import http.client
 import json
+import mimetypes
 import os
 import re
 import subprocess
@@ -49,6 +52,11 @@ INTERVAL = 20                           # seconds between fusion passes
 MAX_BODY = 8 * 1024 * 1024
 HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te",
                "trailers", "transfer-encoding", "upgrade", "host", "authorization", "content-length"}
+DASHBOARD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dashboard", "dist")
+# Explicit, because Windows' registry can map .js to text/plain.
+CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css",
+                 ".svg": "image/svg+xml", ".json": "application/json", ".png": "image/png",
+                 ".ico": "image/x-icon", ".woff2": "font/woff2", ".webmanifest": "application/manifest+json"}
 
 
 def log(*args):
@@ -147,8 +155,10 @@ def _iv(iv) -> dict:
             "state": iv.state, "app": iv.app, "confidence": iv.confidence}
 
 
-def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, ingest_key: str | None = None):
+def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, ingest_key: str | None = None,
+                 dashboard: str = DASHBOARD):
     aw = urllib.parse.urlsplit(aw_url)
+    dashboard_root = os.path.realpath(dashboard)
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -201,6 +211,25 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
             self.end_headers()
             self.wfile.write(data)
 
+        def challenge(self):
+            # The browser answers this with the password already saved for the realm,
+            # so the web UI and the dashboard share one sign-in.
+            return self.send(401, "TimeTracker: sign in with any user name and the key as password.\n",
+                             extra={"WWW-Authenticate": 'Basic realm="TimeTracker"'})
+
+        def static(self, rel: str):
+            """A file of the built dashboard. Hashed assets are cached for good, the page never."""
+            file = os.path.realpath(os.path.join(dashboard_root, rel or "index.html"))
+            if not file.startswith(dashboard_root + os.sep) or not os.path.isfile(file):
+                missing = "" if os.path.isdir(dashboard_root) else " (not built: npm run build in server/dashboard)"
+                return self.send(404, f"not found{missing}\n")
+            with open(file, "rb") as f:
+                data = f.read()
+            ext = os.path.splitext(file)[1].lower()
+            ctype = CONTENT_TYPES.get(ext) or mimetypes.guess_type(file)[0] or "application/octet-stream"
+            cache = "public, max-age=31536000, immutable" if rel.startswith("assets/") else "no-cache"
+            return self.send(200, data, ctype, extra={"Cache-Control": cache})
+
         # ------------------------------------------------------------ routes
 
         def do_OPTIONS(self):
@@ -218,14 +247,20 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                                        "last_sync": relay.last_sync})
             if path == "/tt/state":
                 if not self.authorized():
-                    return self.send(401, "bad key\n")
+                    return self.challenge()
                 return self.send(200, state_json(relay, float(self.query().get("hours", 6))))
             if path == "/tt/lines":
                 if not self.authorized():
-                    return self.send(401, "bad key\n")
+                    return self.challenge()
                 q = self.query()
                 since = datetime.now(timezone.utc) - timedelta(hours=float(q.get("hours", 24)))
                 return self.send(200, "".join(r + "\n" for r in relay.store.raw(q.get("source", "ios"), since)))
+            if path == "/app":
+                return self.send(301, "", extra={"Location": "/app/"})
+            if path.startswith("/app/"):
+                if not self.authorized():
+                    return self.challenge()
+                return self.static(urllib.parse.unquote(path[len("/app/"):]))
             self.proxy()
 
         def do_POST(self):
@@ -250,8 +285,7 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
 
         def proxy(self):
             if not self.authorized():
-                return self.send(401, "TimeTracker: sign in with any user name and the key as password.\n",
-                                 extra={"WWW-Authenticate": 'Basic realm="TimeTracker"'})
+                return self.challenge()
             # ActivityWatch refuses any browser Origin but its own address, so the
             # web UI's queries and settings fail through here. The relay checks it
             # instead: its own pages may write, other sites may not (they could
@@ -361,7 +395,8 @@ def main(argv=None) -> None:
     ingest_key = os.environ.get("TT_INGEST_KEY") or None
     if ingest_key and len(ingest_key) < 16:
         sys.exit("TT_INGEST_KEY must be at least 16 characters.")
-    server = ThreadingHTTPServer((host, port), make_handler(relay, key, aw_url, aw_api_key, ingest_key))
+    dashboard = os.environ.get("TT_DASHBOARD") or DASHBOARD
+    server = ThreadingHTTPServer((host, port), make_handler(relay, key, aw_url, aw_api_key, ingest_key, dashboard))
     log(f"tt-relay listening on {host}:{port}, ActivityWatch at {aw_url}, data in {data}")
     try:
         server.serve_forever()

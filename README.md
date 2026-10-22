@@ -11,7 +11,8 @@ Claude Code session can do most of it.
 
 - [`server/`](server): the relay. Runs remotely (Fly.io), fuses the phone's
   logs ([`docs/fusion.md`](docs/fusion.md)), and keeps ActivityWatch up to
-  date. Also mirrors the desktop's ActivityWatch into the same place.
+  date. Also mirrors the desktop's ActivityWatch into the same place, and
+  serves the dashboard ([`server/dashboard`](server/dashboard), at `/app/`).
 - [`shortcuts/`](shortcuts): the iPhone shortcuts (the watcher, the open/close
   loggers and TT Sync), written in Cherri and published by CI.
 - [`safari-extension/`](safari-extension) and [`ios/`](ios): TT Safari and the

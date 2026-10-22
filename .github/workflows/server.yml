@@ -31,6 +31,16 @@ jobs:
         working-directory: server
         run: python -m unittest discover -s tests -v
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Dashboard tests
+        working-directory: server/dashboard
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
       - name: Docker image
         run: docker build -t tt-relay server/
 
@@ -41,4 +51,6 @@ jobs:
           # The relay reaches the ActivityWatch server inside the container, behind the key.
           curl -fsS --retry 30 --retry-delay 1 --retry-all-errors -u x:ci-key-0123456789abcdef localhost:8080/api/0/info
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/api/0/info)" = 401
+          # The dashboard was built into the image.
+          curl -fsS -u x:ci-key-0123456789abcdef localhost:8080/app/ | grep -q '<div id="root">'
           docker logs relay

@@ -3,6 +3,15 @@
 #   docker run -e TT_KEY=... -v tt-data:/data -p 8080:8080 tt-relay
 # ActivityWatch listens only inside the container (127.0.0.1:5600); the relay
 # on :8080 is the one public port and puts the web UI behind TT_KEY.
+
+# The dashboard (dashboard/), built here and served by the relay at /app/.
+FROM node:24-slim AS dashboard
+WORKDIR /dashboard
+COPY dashboard/package.json dashboard/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY dashboard/ ./
+RUN npm run build
+
 FROM python:3.12-slim
 
 # ActivityWatch's official Linux build (x86_64). aw-server-rust has the web UI built in.
@@ -17,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ca-c
 
 WORKDIR /app
 COPY ttserver ./ttserver
+COPY --from=dashboard /dashboard/dist ./dashboard/dist
 
 ENV TT_DATA=/data \
     PORT=8080 \

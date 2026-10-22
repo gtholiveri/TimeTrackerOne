@@ -16,3 +16,7 @@ shortcuts/*_processed.cherri
 # relay data when run locally
 server/data/
 *.db
+
+# dashboard build
+server/dashboard/node_modules/
+server/dashboard/dist/

@@ -1,15 +1,20 @@
-"""Line parsing, the TT Sync upload protocol, Safari pages, and AW event shapes."""
+"""Line parsing, the TT Sync upload protocol, Safari pages, AW event shapes, and
+the dashboard's files."""
 
+import base64
+import http.client
 import json
 import sys
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ttserver.app import Relay, ingest, ingest_safari  # noqa: E402
+from ttserver.app import Relay, ingest, ingest_safari, make_handler  # noqa: E402
 from ttserver.awsync import device_events, hostname  # noqa: E402
 from ttserver.fusion import Interval  # noqa: E402
 from ttserver.lines import parse_line, parse_ts, to_record  # noqa: E402
@@ -125,6 +130,64 @@ class AWEvents(unittest.TestCase):
         self.assertEqual([(e["data"]["status"], e["duration"]) for e in ev["afk"]],
                          [("not-afk", 20.0), ("afk", 60.0)])
         self.assertEqual(ev["web"], [])
+
+
+class Dashboard(unittest.TestCase):
+    """The built dashboard under /app/, behind the same sign-in as everything else."""
+
+    KEY = "dash-key-0123456789abcdef"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        root = Path(self.tmp.name)
+        (root / "dist" / "assets").mkdir(parents=True)
+        (root / "dist" / "index.html").write_text("<!doctype html><title>TT</title>")
+        (root / "dist" / "assets" / "index-1a2b.js").write_text("console.log(1)")
+        (root / "secret.txt").write_text("not for the web")
+        relay = Relay(Store(str(root / "tt.db")), None)
+        handler = make_handler(relay, self.KEY, "http://127.0.0.1:9", None, dashboard=str(root / "dist"))
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.tmp.cleanup()
+
+    def get(self, path, auth=True):
+        conn = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=5)
+        token = base64.b64encode(f"me:{self.KEY}".encode()).decode()
+        conn.request("GET", path, headers={"Authorization": f"Basic {token}"} if auth else {})
+        res = conn.getresponse()
+        body = res.read()
+        conn.close()
+        return res.status, dict(res.getheaders()), body
+
+    def test_asks_for_the_key(self):
+        status, headers, _ = self.get("/app/", auth=False)
+        self.assertEqual(status, 401)
+        self.assertIn('realm="TimeTracker"', headers["WWW-Authenticate"])
+
+    def test_page_and_assets(self):
+        status, headers, body = self.get("/app/")
+        self.assertEqual((status, headers["Content-Type"], headers["Cache-Control"]),
+                         (200, "text/html; charset=utf-8", "no-cache"))
+        self.assertIn(b"<title>TT</title>", body)
+        status, headers, _ = self.get("/app/assets/index-1a2b.js")
+        self.assertEqual((status, headers["Content-Type"]), (200, "text/javascript"))
+        self.assertIn("immutable", headers["Cache-Control"])
+        self.assertEqual(self.get("/app")[1]["Location"], "/app/")
+
+    def test_nothing_outside_the_build(self):
+        self.assertEqual(self.get("/app/../secret.txt")[0], 404)
+        self.assertEqual(self.get("/app/%2e%2e/secret.txt")[0], 404)
+        self.assertEqual(self.get("/app/assets/missing.js")[0], 404)
+
+    def test_live_state_asks_for_the_same_sign_in(self):
+        # Without the challenge the browser wouldn't reuse the saved password for /tt/state.
+        status, headers, _ = self.get("/tt/state", auth=False)
+        self.assertEqual(status, 401)
+        self.assertIn('realm="TimeTracker"', headers["WWW-Authenticate"])
 
 
 if __name__ == "__main__":

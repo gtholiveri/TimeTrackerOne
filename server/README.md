@@ -39,6 +39,7 @@ history.
 | `GET /tt/state?key=KEY&hours=6` | The fused timeline per device, with the current state. This is the live feed. |
 | `GET /tt/lines?key=KEY&source=ios\|safari&hours=24` | The raw lines, for debugging. |
 | `GET /tt/health` | No key needed. |
+| `GET /app/` | The dashboard (below), behind basic auth. |
 | everything else | The ActivityWatch web UI and API, behind basic auth. |
 
 ## Deploy on Fly.io (least upkeep)
@@ -140,6 +141,42 @@ offline.
 On macOS or Linux, run `python3 -m ttserver.mirror --relay ... --key ...` from
 the `server` folder at login instead.
 
+## The dashboard
+
+`https://<name>.fly.dev/app/`, with the same sign-in as the ActivityWatch web
+UI (any user name, `TT_KEY` as password). It reads ActivityWatch's data
+through the relay and changes none of it:
+
+- **Today:** what each device is doing now, today's total split by category
+  and by rating, and the day as one merged line or one lane per device. Works
+  on the phone.
+- **Explore:** a filter row (range, attention or all device time, device,
+  category, rating, search) above stat tiles, time per day or hour stacked by
+  category, rating or device, a weekday-by-hour heatmap, a top table grouped
+  any way, day strips and the activity log.
+- **Categories:** ActivityWatch's own categories (the `classes` setting, so
+  its web UI stays in step), with a live preview of what each rule catches, a
+  productive / neutral / distracting rating (ActivityWatch's `score`), and an
+  Uncategorized list to triage from.
+- **Attention:** the rules that merge phone and laptop into one line (which
+  device wins, background phone apps like Clock that never count, the Home
+  Screen), stored as the `tt_attention` setting, with a preview of a day.
+
+Source: `dashboard/` (Vite, React, TypeScript; no other runtime
+dependencies). The Docker image builds it, and the relay serves
+`dashboard/dist` at `/app/`.
+
+```sh
+cd server/dashboard
+npm install
+npm run dev     # http://localhost:5173/app/, against the real relay
+npm test
+```
+
+`npm run dev` proxies `/api` and `/tt` to the relay and adds the key itself,
+taking the relay URL and `TT_KEY` from `TT_RELAY` and `TT_KEY`, or from
+`~/tt-relay-keys.txt`.
+
 ## Run it locally
 
 ```sh
@@ -159,6 +196,7 @@ running on 5600, leave out `TT_AW_COMMAND`.
 | `TT_AW_URL` | `http://127.0.0.1:5600` | ActivityWatch's server. |
 | `TT_AW_COMMAND` | | Starts that server and restarts it if it exits. |
 | `TT_AW_API_KEY` | | If ActivityWatch itself has `[auth] api_key` set. |
+| `TT_DASHBOARD` | `dashboard/dist` | The built dashboard served at `/app/`. |
 
 ## Tests
 

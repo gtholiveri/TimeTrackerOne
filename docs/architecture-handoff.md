@@ -129,13 +129,30 @@ through the relay with `TT_KEY`. It reconciles the same way, so it can stop,
 restart or catch up after time offline without duplicating anything. Phone
 and laptop then show up as two hosts in one ActivityWatch.
 
+### The dashboard
+
+`server/dashboard` is a React app the relay serves at `/app/`, behind the same
+key. It only reads ActivityWatch (the same API its web UI uses) and the live
+feed, and writes two settings: `classes` (ActivityWatch's own categories, with
+`score` as the productive / neutral / distracting rating) and `tt_attention`
+(the merge rules below). Tabs: Today (glance, phone-friendly), Explore
+(filters and plots), Categories (rule editor with live preview, uncategorized
+triage), Attention (the merge rules, with a preview).
+
+The merged "you" line picks, moment by moment, the device that had your
+attention. The phone has no idle signal, so being unlocked isn't enough: apps
+on a background list (Clock, Spotify, Music, Podcasts, Maps by default) never
+count; otherwise the phone wins over an active laptop (configurable); the
+Home Screen counts only when nothing else does. These are first rules, meant
+to be refined (duration-based ones, say) as real days show where they're wrong.
+
 ### Build and release (CI)
 
 | Workflow | What it does |
 | --- | --- |
 | `shortcuts.yml` | Compiles the Cherri sources and signs them through RoutineHub's HubSign service (iOS only imports signed shortcuts). Publishes them on the `shortcuts` pre-release, so each one is a one-tap install link. |
 | `ios-app.yml` | Builds the unsigned TimeTracker app on a macOS runner with XcodeGen. Publishes `TimeTracker-unsigned.ipa` on the `ios-app` pre-release, for Sideloadly. |
-| `server.yml` | Unit tests, end-to-end tests against the released aw-server-rust, and a Docker build and smoke test. |
+| `server.yml` | Unit tests, end-to-end tests against the released aw-server-rust, the dashboard's tests, and a Docker build (dashboard included) and smoke test. |
 
 ## Why it's built this way
 
@@ -194,11 +211,10 @@ From [`findings.md`](findings.md), where the trials are written up:
   "TT-Sync"; not yet rerun.
 - The automations calling TT Sync while the phone locks.
 - TT Safari on iOS.
-- The relay on Fly.
-- The desktop mirror.
 
-The PowerShell setup scripts (`server/deploy/*.ps1`) were written without a
-Windows machine to try them on.
+Running since 2026-10-21: the relay on Fly (`tt-relay-gabe`), the desktop
+mirror on Gabe's laptop (both `server/deploy/*.ps1` scripts worked as
+written), and the dashboard.
 
 ## Open questions and known limits
 
@@ -238,6 +254,7 @@ Windows machine to try them on.
 | `docs/empirical-tests.md` | The test plan (T1–T12) and the iOS app install |
 | `shortcuts/` | Cherri sources, plus the README with install links and Cherri quirks |
 | `server/ttserver/` | `app.py` (HTTP, loop), `fusion.py`, `web.py` (Safari pages), `awsync.py` (ActivityWatch client and reconcile), `store.py`, `lines.py`, `mirror.py` |
-| `server/README.md` | Endpoints, deploying, the desktop mirror, tests |
+| `server/README.md` | Endpoints, deploying, the desktop mirror, the dashboard, tests |
+| `server/dashboard/src/lib/` | The dashboard's data layer: `activity.ts` (buckets to per-device activity), `categories.ts`, `attention.ts` (the merge rules), `aggregate.ts` |
 | `safari-extension/`, `ios/` | TT Safari and the app that carries it |
 | `test-harness/` | The early receiver, log analyzer and probes from the trials |
