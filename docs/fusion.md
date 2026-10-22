@@ -34,6 +34,10 @@ closes fire even on a straight power-off. But they have blind spots:
   straight back into the same app is invisible to them.
 - They can't tell the Home Screen from the Lock Screen: both are just "after
   a close, before the next open".
+- Swiping along the bottom edge from one app to the next fires a close for
+  the app left, and no open for the next one. On the phone the automation
+  passes no input, so the close names no app itself; its Get Current App
+  already names the app swiped to. (Seen on the phone, 2026-10-21.)
 
 **TT Sync** uploads after every open and close, and TT Watch runs it after
 writing a locked stretch. So the relay hears about every app switch within a
@@ -68,7 +72,8 @@ most one tick and a margin before the watcher saw the change
 (`SNAP` = 4 s), and at most 0.5 s after it (the automation's own timestamp is
 taken a moment after the app actually opened).
 
-- Into an app: the `open` of that same app.
+- Into an app: the `open` of that same app. Failing that, after a swipe, the
+  `close` whose Get Current App already names that app.
 - Out of an app, into home or locked: the `close`.
 
 Snapped transitions are exact to the automation's timing (well under a
@@ -81,8 +86,10 @@ Separately, build a timeline from the automation events alone:
 - `open(X)`: X from then on.
 - A `close` followed within `SNAP` by an `open` is an app switch. The open
   does the work, so there's no Home Screen sliver between the two apps.
-- A `close` of some other app than the current one is a late echo of an
-  earlier switch, and is ignored.
+- A `close` that is a swipe out of the current app (its Get Current App names
+  another app) counts as an `open` of that app.
+- A `close` whose input names some other app than the current one is a late
+  echo of an earlier switch, and is ignored.
 - Any other `close` starts a stretch outside apps. If the next open came within
   20 s (`HOME_MAX`), it was the **Home Screen**; if later, the phone was
   **locked**. Nobody sits on the Home Screen for long, but an unlocked phone

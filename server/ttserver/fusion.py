@@ -9,7 +9,8 @@ The two streams (docs/fusion.md has the evidence behind every rule):
   its own timestamp.
 - Automations (TT App Opened / TT App Closed): one line the moment an app opens
   or closes (kind=open/close). Locking the phone fires a close; unlocking
-  straight back into the same app fires nothing.
+  straight back into the same app fires nothing. Swiping from one app to the
+  next fires a close and no open.
 
 The watcher says *what* the phone is doing to within one tick; the automations
 say exactly *when* an app opened or closed, but can't see an unlock or tell the
@@ -102,6 +103,25 @@ def record_state(r: Record) -> tuple[str, str | None] | None:
     return ("app", app) if app else ("home", None)
 
 
+def swipe_target(e: Record, left: str | None) -> str | None:
+    """If close `e` is a swipe out of app `left`, the app it swiped to; else None.
+
+    Swiping along the bottom edge from one app to the next fires a close for
+    the app left, and no open for the next one. By the time the close's
+    shortcut runs, Get Current App (`e.cur`) already names the next app. The
+    automation passes no input on the phone today, so `e.input` is empty.
+    """
+    if e.kind != "close":
+        return None
+    cur = (e.cur or "").strip()
+    left = (left or "").strip()
+    if not cur or cur == left:
+        return None  # Home Screen or app switcher; or a lock, where Get Current App keeps the last app
+    if e.input and e.input.strip() and e.input.strip() != left:
+        return None  # iOS named the app that closed, and it isn't this one: a late echo
+    return cur
+
+
 # ---------------------------------------------------------------- watcher timeline
 
 def watcher_segments(records: list[Record]) -> list[Interval]:
@@ -158,7 +178,8 @@ def snap_to_automations(segs: list[Interval], events: list[Record]) -> list[Inte
             pick = opens[-1] if opens else None
         if pick is None and (prev.state == "app" or nxt.state in ("locked", "home")):
             closes = [e for e in window if e.kind == "close"
-                      and (prev.state != "app" or e.app_identity in (None, prev.app) or nxt.state == "locked")]
+                      and (prev.state != "app" or e.app_identity in (None, prev.app) or nxt.state == "locked"
+                           or nxt.state == "app" and swipe_target(e, prev.app) == nxt.app)]
             pick = closes[-1] if closes else None
         if pick is None:
             continue
@@ -197,7 +218,8 @@ def automation_timeline(events: list[Record], now: datetime) -> list[Interval]:
     """The timeline the automations alone imply.
 
     open(X): X from then on. A close followed by an open within SNAP is an app
-    switch, and the open does the work. Any other close of the current app
+    switch, and the open does the work. A close that is a swipe to X (see
+    swipe_target) counts like open(X). Any other close of the current app
     means the Home Screen if the next open came within HOME_MAX, and locked
     otherwise (the Lock Screen and Home Screen look the same to automations).
     The newest close counts as locked once it's LOCK_INFER old: had the phone
@@ -210,6 +232,8 @@ def automation_timeline(events: list[Record], now: datetime) -> list[Interval]:
     for k, e in enumerate(evs):
         if e.kind == "open":
             new = ("app", e.app_identity)
+        elif state and state[0] == "app" and (to := swipe_target(e, state[1])):
+            new = ("app", to)  # a swipe: the close of one app, and no open for the next
         else:
             if state and state[0] == "app" and e.app_identity not in (None, state[1]):
                 continue  # the late close of an app already left

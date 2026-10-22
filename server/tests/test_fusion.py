@@ -29,6 +29,12 @@ def closed(s, app):
     return Record(t(s), "close", input=app, cur=app)
 
 
+def phone_close(s, cur):
+    """A close as the phone really sends it: no input, and Get Current App says
+    what's in front once the shortcut runs (after a swipe, the next app)."""
+    return Record(t(s), "close", input="", cur=cur)
+
+
 def simple(intervals):
     """(start s, end s, what) with what = app name, "home" or "locked"."""
     return [(round((i.start - T0).total_seconds(), 1), round((i.end - T0).total_seconds(), 1),
@@ -74,6 +80,31 @@ class Snapping(unittest.TestCase):
         out = fuse(recs, t(500))
         self.assertEqual(simple(out), [(0, 100, "Reddit"), (100, 400, "locked"), (400, 500, "Reddit")])
 
+    def test_swipe_close_is_the_switch(self):
+        # Swiping from Files to Maps fires a close and no open; by then Get
+        # Current App already says Maps. Then locking fires a close as usual.
+        recs = [opened(0, "Files"), w(1.2, "No", "Files"),
+                phone_close(100.0, "Google Maps"), w(101.2, "No", "Google Maps"),
+                phone_close(150.0, "Google Maps"), w(151.0, "Yes", "Google Maps"),
+                w(300, "No", "Google Maps")]
+        out = fuse(recs, t(310))
+        self.assertEqual(simple(out), [(0, 100.0, "Files"), (100.0, 150.0, "Google Maps"),
+                                       (150.0, 300, "locked"), (300, 310, "Google Maps")])
+        self.assertEqual(out[1].confidence, "exact")
+
+    def test_swipes_back_and_forth(self):
+        recs = [opened(0, "Files"), w(1.5, "No", "Files"),
+                phone_close(60.0, "Gemini"), w(61.4, "No", "Gemini"),
+                phone_close(63.3, "Files"), w(64.0, "No", "Files")]
+        self.assertEqual(simple(fuse(recs, t(90))), [(0, 60.0, "Files"), (60.0, 63.3, "Gemini"),
+                                                     (63.3, 90, "Files")])
+
+    def test_close_to_home_is_not_a_swipe(self):
+        recs = [opened(0, "Files"), w(1.5, "No", "Files"),
+                phone_close(60.0, ""), w(61.4, "No", ""), opened(70.0, "Mail"), w(71.0, "No", "Mail")]
+        self.assertEqual(simple(fuse(recs, t(90))), [(0, 60.0, "Files"), (60.0, 70.0, "home"),
+                                                     (70.0, 90, "Mail")])
+
 
 class LiveTail(unittest.TestCase):
     def test_open_ahead_of_the_watcher(self):
@@ -115,6 +146,11 @@ class AutomationsOnly(unittest.TestCase):
         recs = [opened(0, "A"), closed(100.0, "A"), opened(100.2, "B")]
         self.assertEqual(simple(fuse(recs, t(150))), [(0, 100.2, "A"), (100.2, 150, "B")])
 
+    def test_swipe_close_switches_to_the_app_in_front(self):
+        recs = [opened(0, "Files"), phone_close(100, "Gemini"), phone_close(130, "Files")]
+        self.assertEqual(simple(fuse(recs, t(160))), [(0, 100, "Files"), (100, 130, "Gemini"),
+                                                      (130, 160, "Files")])
+
     def test_late_close_of_previous_app_is_ignored(self):
         recs = [opened(0, "A"), opened(100, "B"), closed(100.4, "A")]
         self.assertEqual(simple(fuse(recs, t(150))), [(0, 100, "A"), (100, 150, "B")])
@@ -145,7 +181,8 @@ class Invariants(unittest.TestCase):
                     recs.append(w(s + rng.uniform(0.1, 2.3), "No", app))
                 state = app
             elif r < 0.6 and state:
-                recs.append(closed(s, state))
+                # Half the closes as the phone sends them: no input, and any app (or none) in front.
+                recs.append(closed(s, state) if rng.random() < 0.5 else phone_close(s, rng.choice(apps + [""])))
                 if rng.random() < 0.8:
                     recs.append(w(s + rng.uniform(0.1, 2.3), "Yes", state))
             else:
