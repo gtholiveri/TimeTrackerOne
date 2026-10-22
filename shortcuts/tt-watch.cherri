@@ -92,10 +92,14 @@ repeat i for 100000 {
             if @sawLocked == 1 {
                 @sawLocked = 0
                 // The offline guard: no Wi-Fi network and no signal, no request.
+                // Network details come back untyped; Cherri compares only numbers with >.
                 const wifi = getWifiDetail("Network Name")
-                const channel = getWifiDetail("Channel Number")
-                const bars = getCellularDetail("Number of Signal Bars")
-                if wifi || channel > 0 || bars > 0 {
+                @wifiName = "{wifi}"
+                const channelDetail = getWifiDetail("Channel Number")
+                const channel = getNumbers(channelDetail)
+                const barsDetail = getCellularDetail("Number of Signal Bars")
+                const bars = getNumbers(barsDetail)
+                if @wifiName || channel > 0 || bars > 0 {
                     const name = "tt-watch-{day}.txt"
                     const file = getFile("{name}", nil, false)
                     const fileLines = splitText(file, "\n")
