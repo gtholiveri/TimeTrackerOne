@@ -99,8 +99,14 @@ From the `server` folder, with the URL and `TT_KEY` from
 powershell -ExecutionPolicy Bypass -File deploy\desktop-mirror.ps1 -Relay https://<name>.fly.dev -Key <TT_KEY>
 ```
 
-It does one pass in the foreground, copying up to 30 days, then starts in the
-background and adds itself to Startup.
+It does one pass in the foreground, copying up to 30 days, then registers the
+scheduled task "TimeTracker mirror" (a minute after login, restarted within 5
+minutes if it stops) and starts it.
+
+Don't trust files under `%LOCALAPPDATA%` as seen from this session: the
+Claude desktop app is a packaged app, so its shells see a private copy of
+AppData that Task Scheduler and the login don't. Check the mirror through the
+relay instead (the laptop's newest events in `/api/0/buckets/`).
 
 Checks:
 - `Get-Content $env:LOCALAPPDATA\tt-mirror\mirror.log -Tail 20` shows no

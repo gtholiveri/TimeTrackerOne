@@ -71,6 +71,12 @@ def main(argv=None) -> None:
     args = p.parse_args(argv)
     if not args.relay or not args.key:
         p.error("--relay and --key are required")
+    # The folders may not exist for this process even if setup made them: a
+    # packaged app (the Claude desktop app, say) writes AppData into its own
+    # private copy, which Task Scheduler and the login never see.
+    for path in (args.state, args.log):
+        if path:
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
 
     local = AW(args.local, timeout=30)
     remote = AW(args.relay, api_key=args.key, timeout=60)

@@ -135,8 +135,13 @@ offline.
    ```powershell
    powershell -ExecutionPolicy Bypass -File deploy\desktop-mirror.ps1 -Relay https://<name>.fly.dev -Key <TT_KEY>
    ```
-   It copies the last 30 days once, then keeps running in the background and
-   starts at every login. Its log is `%LOCALAPPDATA%\tt-mirror\mirror.log`.
+   It copies the last 30 days once, then keeps running in the background as
+   the scheduled task "TimeTracker mirror": started a minute after each login
+   and restarted within 5 minutes if it stops. Its log is
+   `%LOCALAPPDATA%\tt-mirror\mirror.log`. Run the script from a normal
+   PowerShell window: run from inside a packaged app's terminal (the Claude
+   desktop app, say), its view of `%LOCALAPPDATA%` is a private copy, though
+   the mirror still works because it creates its folder itself.
 
 On macOS or Linux, run `python3 -m ttserver.mirror --relay ... --key ...` from
 the `server` folder at login instead.
