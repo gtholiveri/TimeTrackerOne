@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSegs, type Device, type Seg } from "./activity";
+import { buildSegs, discoverDevices, type Device, type Seg } from "./activity";
 import { DEFAULT_ATTENTION, mergeAttention } from "./attention";
 import { AW_DEFAULT_CLASSES, CategorySet, forSaving, withAlternative } from "./categories";
 import { findAt, flatten, intersect, overlay, splitAt } from "./intervals";
@@ -7,6 +7,19 @@ import { PALETTE_LIGHT } from "./palette";
 
 const S = 1000;
 const span = (a: number, b: number) => ({ start: a * S, end: b * S });
+
+describe("devices", () => {
+  it("gives a browser bucket without a host name to the laptop", () => {
+    const b = (id: string, type: string, hostname: string, client = "aw-watcher") => ({ id, type, hostname, client });
+    const devices = discoverDevices({
+      w: b("aw-watcher-window_DESK", "currentwindow", "DESK"),
+      a: b("aw-watcher-afk_DESK", "afkstatus", "DESK"),
+      c: b("aw-watcher-web-chrome", "web.tab.current", "unknown", "aw-client-web"),
+      p: b("aw-watcher-window_iPhone", "currentwindow", "iPhone", "tt-relay"),
+    });
+    expect(devices.map((d) => [d.label, d.web])).toEqual([["iPhone", []], ["Laptop", ["aw-watcher-web-chrome"]]]);
+  });
+});
 
 describe("intervals", () => {
   it("flattens overlaps and drops spans swallowed by an earlier one", () => {

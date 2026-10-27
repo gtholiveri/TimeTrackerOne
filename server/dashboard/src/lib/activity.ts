@@ -35,12 +35,17 @@ const RELAY_CLIENT = "tt-relay";
 const BROWSER = /chrome|msedge|firefox|brave|opera|vivaldi|arc|safari|zen/i;
 const HOME_SCREEN = "Home Screen";
 
-/** Devices from the bucket list, phones first. Buckets without a host name
- *  (a browser extension's first minutes) are left out. */
+/** Devices from the bucket list, phones first. A browser extension's bucket
+ *  often has no host name ("unknown"): those go to the laptop(s), since only
+ *  browser window time picks up tabs anyway. */
 export function discoverDevices(buckets: Record<string, Bucket>): Device[] {
   const byHost = new Map<string, Device>();
+  const hostlessWeb: string[] = [];
   for (const b of Object.values(buckets)) {
-    if (!b.hostname || b.hostname === "unknown") continue;
+    if (!b.hostname || b.hostname === "unknown") {
+      if (b.type === "web.tab.current" && b.client !== RELAY_CLIENT) hostlessWeb.push(b.id);
+      continue;
+    }
     let d = byHost.get(b.hostname);
     if (!d) {
       const kind: DeviceKind = b.client === RELAY_CLIENT ? "phone" : "desktop";
@@ -53,6 +58,7 @@ export function discoverDevices(buckets: Record<string, Bucket>): Device[] {
     else if (b.type === "web.tab.current") d.web.push(b.id);
   }
   const devices = [...byHost.values()].filter((d) => d.window);
+  for (const d of devices) if (d.kind === "desktop") d.web.push(...hostlessWeb);
   const count = (k: DeviceKind) => devices.filter((d) => d.kind === k).length;
   for (const d of devices) {
     if (d.kind === "phone" && count("phone") === 1) d.label = /ipad/i.test(d.host) ? "iPad" : "iPhone";

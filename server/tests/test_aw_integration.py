@@ -202,6 +202,16 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(max(round(e["duration"]) for e in copied), 90)
         self.assertEqual(mirror_once(self.desk, remote, state, timedelta(days=1))[bucket], (0, 0))
 
+    def test_events_come_back_whole(self):
+        # aw-server-rust cuts listed events to the query range; AW.events must not.
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        bucket = "aw-watcher-afk_DESKTOP-WHOLE"
+        self.desk.ensure_bucket(bucket, "afkstatus", "DESKTOP-WHOLE", client="aw-watcher-afk")
+        self.desk.insert(bucket, [awsync.event(now - timedelta(hours=4), now, {"status": "not-afk"})])
+        got = self.desk.events(bucket, now - timedelta(hours=2), now - timedelta(hours=1))
+        self.assertEqual([(awsync.parse_aw_ts(e["timestamp"]), e["duration"]) for e in got],
+                         [(now - timedelta(hours=4), 4 * 3600.0)])
+
     def test_proxy_needs_the_key(self):
         self.assertEqual(self.http("GET", "/api/0/info")[0], 401)
         auth = "Basic " + base64.b64encode(f"me:{KEY}".encode()).decode()

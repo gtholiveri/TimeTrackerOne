@@ -133,6 +133,15 @@ through the relay with `TT_KEY`. It reconciles the same way, so it can stop,
 restart or catch up after time offline without duplicating anything. Phone
 and laptop then show up as two hosts in one ActivityWatch.
 
+aw-server-rust cuts the events it lists to the query's range, so every read
+fetches the events at either end of the range again by id (`AW.events`).
+Until 2026-10-27 the mirror didn't, and each pass cut any event crossing the
+start of its two-hour window: a not-afk span longer than two hours kept only
+its last two, and the dashboard (which counts window time only while not-afk)
+lost most of each long working stretch. The mirror's state file has a version;
+bumping it makes the next start copy the whole backfill again, which repairs
+the relay's copy.
+
 ### The dashboard
 
 `server/dashboard` is a React app the relay serves at `/app/`, behind the same

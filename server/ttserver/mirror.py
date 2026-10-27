@@ -28,6 +28,10 @@ from .awsync import AW, CLIENT
 
 RECENT = timedelta(hours=2)
 SLACK = timedelta(minutes=10)
+# Bumped when earlier passes may have left the relay's copy wrong, so the next
+# start copies the whole --backfill-days again. 2: passes before it cut every
+# event that crossed the start of their range (see AW.events).
+STATE_VERSION = 2
 
 
 def log(message: str, path: str | None) -> None:
@@ -85,6 +89,8 @@ def main(argv=None) -> None:
             state = json.load(f)
     except (OSError, ValueError):
         state = {}
+    if state.get("version") != STATE_VERSION:
+        state = {"version": STATE_VERSION}
     backfill = timedelta(days=args.backfill_days)
     log(f"mirroring {args.local} to {args.relay} every {args.interval:g} s", args.log)
     while True:

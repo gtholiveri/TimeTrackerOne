@@ -93,9 +93,24 @@ class AW:
                   {"client": client, "type": type_, "hostname": host})
 
     def events(self, bucket_id: str, start: datetime, end: datetime) -> list[dict]:
+        """The events overlapping [start, end], whole.
+
+        aw-server-rust cuts the events it returns to the query range: one that
+        began before `start` comes back starting at `start`. Copying or
+        comparing that cut copy loses the part before `start` (the mirror did
+        this to every not-afk span longer than its two-hour window). So the
+        events touching either end of the range are fetched again by id."""
         q = urllib.parse.urlencode({"start": start.astimezone(timezone.utc).isoformat(),
                                     "end": end.astimezone(timezone.utc).isoformat(), "limit": -1})
-        return self._req("GET", f"/buckets/{urllib.parse.quote(bucket_id)}/events?{q}") or []
+        path = f"/buckets/{urllib.parse.quote(bucket_id)}/events"
+        lo, hi = _ms(start), _ms(end)
+        out = []
+        for e in self._req("GET", f"{path}?{q}") or []:
+            begin, length, _ = event_key(e)
+            if e.get("id") is not None and (begin <= lo or begin + length >= hi):
+                e = self._req("GET", f"{path}/{e['id']}") or e
+            out.append(e)
+        return out
 
     def insert(self, bucket_id: str, events: list[dict]) -> None:
         for k in range(0, len(events), 1000):  # keeps each request well under the relay's body limit
