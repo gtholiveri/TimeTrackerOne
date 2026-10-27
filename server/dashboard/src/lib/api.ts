@@ -1,5 +1,6 @@
 // The relay's API, same origin as the page: ActivityWatch's REST API under
-// /api/0/ (proxied by the relay) and the relay's own live feed at /tt/state.
+// /api/0/ (proxied by the relay), the relay's own live feed at /tt/state and
+// its block labels at /tt/labels.
 // The browser sends the saved sign-in by itself.
 
 export interface AWEvent {
@@ -39,6 +40,18 @@ export interface TTState {
   devices: Record<string, TTDevice>;
 }
 
+/** A block as /tt/labels takes it: its top items, longest first. */
+export interface LabelRequest {
+  id: string;
+  items: { subject: string; app: string; title: string; seconds: number; category: string }[];
+}
+
+export interface LabelAnswer {
+  /** Block id -> label, for the blocks a model labeled (or the cache had). */
+  labels: Record<string, string>;
+  model: string | null;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { credentials: "same-origin", ...init });
   if (!res.ok) throw new Error(`${init?.method ?? "GET"} ${path} failed: ${res.status} ${res.statusText}`);
@@ -60,4 +73,10 @@ export const api = {
       body: JSON.stringify(value),
     }),
   state: (hours = 1) => request<TTState>(`/tt/state?hours=${hours}`),
+  labels: (blocks: LabelRequest[]) =>
+    request<LabelAnswer>("/tt/labels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blocks }),
+    }),
 };

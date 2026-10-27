@@ -16,6 +16,10 @@ only, so the key stored on the phone can't read anything back:
         The fused timeline per device, newest last, with the live state.
     GET  /tt/lines?key=KEY&source=ios|safari[&hours=24]
         The raw lines received, oldest first, for debugging.
+    POST /tt/labels?key=KEY
+        Body: {"blocks": [{"id", "items": [{"subject", "app", "title", "seconds",
+        "category"}]}]}. Answers {"labels": {id: label}, "model": ...}, labels
+        written by a free LLM API and cached (labels.py).
     GET  /tt/health
     GET  /app/
         The dashboard (server/dashboard, built into dashboard/dist).
@@ -41,6 +45,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import awsync
 from .fusion import fuse
+from .labels import Labeler
 from .lines import parse_line, to_record
 from .store import Store, iso_utc
 from .web import web_segments
@@ -156,7 +161,7 @@ def _iv(iv) -> dict:
 
 
 def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, ingest_key: str | None = None,
-                 dashboard: str = DASHBOARD):
+                 dashboard: str = DASHBOARD, labeler: Labeler | None = None):
     aw = urllib.parse.urlsplit(aw_url)
     dashboard_root = os.path.realpath(dashboard)
 
@@ -275,6 +280,17 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                 if path == "/tt/ingest":
                     return self.send(200, ingest(relay, self.query(), body) + "\n")
                 return self.send(200, ingest_safari(relay, self.query(), body))
+            if path == "/tt/labels":
+                if not self.authorized():
+                    self.close_connection = True  # the unread body would be taken for the next request
+                    return self.challenge()
+                try:
+                    blocks = json.loads(self.body() or b"{}").get("blocks")
+                except (ValueError, AttributeError):
+                    return self.send(400, "expected {\"blocks\": [...]}\n")
+                if labeler is None:
+                    return self.send(200, {"labels": {}, "model": None})
+                return self.send(200, labeler.label(blocks))
             self.proxy()
 
         def do_DELETE(self):
@@ -396,8 +412,11 @@ def main(argv=None) -> None:
     if ingest_key and len(ingest_key) < 16:
         sys.exit("TT_INGEST_KEY must be at least 16 characters.")
     dashboard = os.environ.get("TT_DASHBOARD") or DASHBOARD
-    server = ThreadingHTTPServer((host, port), make_handler(relay, key, aw_url, aw_api_key, ingest_key, dashboard))
+    labeler = Labeler(os.path.join(data, "labels.db"), log=log)
+    server = ThreadingHTTPServer((host, port), make_handler(relay, key, aw_url, aw_api_key, ingest_key, dashboard,
+                                                            labeler))
     log(f"tt-relay listening on {host}:{port}, ActivityWatch at {aw_url}, data in {data}")
+    log("block labels from:", ", ".join(f"{p.name}/{p.model}" for p in labeler.chain) or "nobody (none configured)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

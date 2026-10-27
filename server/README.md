@@ -38,6 +38,7 @@ history.
 | `POST /tt/safari?key=KEY` | The Safari extension's records (a JSON array, or one JSON object per line). |
 | `GET /tt/state?key=KEY&hours=6` | The fused timeline per device, with the current state. This is the live feed. |
 | `GET /tt/lines?key=KEY&source=ios\|safari&hours=24` | The raw lines, for debugging. |
+| `POST /tt/labels?key=KEY` | Short labels for the dashboard's timeline blocks, from a free LLM API (below). Body `{"blocks": [{"id", "items": [{"subject", "app", "title", "seconds", "category"}]}]}`, answer `{"labels": {id: label}, "model": ...}`. `TT_KEY` only. |
 | `GET /tt/health` | No key needed. |
 | `GET /app/` | The dashboard (below), behind basic auth. |
 | everything else | The ActivityWatch web UI and API, behind basic auth. |
@@ -202,6 +203,52 @@ running on 5600, leave out `TT_AW_COMMAND`.
 | `TT_AW_COMMAND` | | Starts that server and restarts it if it exits. |
 | `TT_AW_API_KEY` | | If ActivityWatch itself has `[auth] api_key` set. |
 | `TT_DASHBOARD` | `dashboard/dist` | The built dashboard served at `/app/`. |
+| `TT_LLM_GROQ_KEY`, `TT_LLM_CEREBRAS_KEY`, `TT_LLM_GEMINI_KEY`, `TT_LLM_MISTRAL_KEY`, `TT_LLM_OPENROUTER_KEY` | | Free-tier keys for block labels, tried in this order. |
+| `TT_LLM_<NAME>_MODEL` | (below) | A different model for that provider (`GROQ`, `LLM7`, ...). |
+| `TT_LLM_LLM7_KEY` | | Optional free LLM7 token, for higher limits. |
+| `TT_LLM_KEYLESS` | `1` | `0` keeps block titles away from the keyless services. |
+
+## Block labels
+
+The dashboard's timeline groups the day into blocks and names each one
+("Writing in Overleaf", "CAD in SolidWorks", "Andor on Disney+"). It posts each
+block of five minutes or more (its top six apps and sites, with one window or
+page title each) to `/tt/labels`. The relay (`ttserver/labels.py`) asks a
+model for up to 20 blocks per call and keeps the answers in `labels.db` next
+to `tt.db`, by a coarse digest of the block (main subjects in order, titles
+letters only), so a live block that keeps growing isn't asked about again.
+The dashboard also keeps them in the browser. Any block no provider labels
+keeps the dashboard's own label.
+
+All providers are free tiers with OpenAI-compatible chat endpoints, called
+with the standard library. They're tried in order; one that fails, times out
+(20 s) or rate-limits (then skipped for a minute) passes its blocks on to the
+next. The list they come from is
+[awesome-free-llm-apis](https://github.com/mnfst/awesome-free-llm-apis);
+limits as of October 2026.
+
+| Provider | Model | Key | Free limits | Why |
+| --- | --- | --- | --- | --- |
+| Groq | `openai/gpt-oss-20b` | `TT_LLM_GROQ_KEY` ([console.groq.com/keys](https://console.groq.com/keys)) | 30 req/min, 1,000/day | Fastest, most generous; the one to set up. |
+| Cerebras | `gpt-oss-120b` | `TT_LLM_CEREBRAS_KEY` ([cloud.cerebras.ai](https://cloud.cerebras.ai)) | about 30 req/min, 14,400/day | Also very fast. Not on the list any more; check it's still free. |
+| Google Gemini | `gemini-2.5-flash-lite` | `TT_LLM_GEMINI_KEY` ([aistudio.google.com](https://aistudio.google.com/app/apikey)) | per-account quotas in AI Studio | Reliable. Free-tier prompts may be used by Google. |
+| Mistral | `ministral-8b-latest` | `TT_LLM_MISTRAL_KEY` ([console.mistral.ai](https://console.mistral.ai/api-keys)) | about 1 req/s | Free mode may train on prompts unless you opt out. |
+| OpenRouter | `openrouter/free` | `TT_LLM_OPENROUTER_KEY` ([openrouter.ai/keys](https://openrouter.ai/keys)) | 20 req/min, 50/day | Routes to whichever free model is up. |
+| LLM7.io | `gpt-oss:20b` | none (optional `TT_LLM_LLM7_KEY`) | with a free token 60 req/min, 250/hour | No sign-up, so labels work out of the box. |
+| Kilo Code | `kilo-auto/free` | none | 200 req/hour per IP | No sign-up; may route to providers that log prompts. |
+| OVHcloud AI Endpoints | `gpt-oss-20b` | none | 2 req/min per IP and model | No sign-up, EU-hosted; last resort. |
+
+The keyless ones are on unless `TT_LLM_KEYLESS=0`, and they and most free
+tiers may log or train on what they're sent: window titles and site names.
+With a key set, Groq answers first and the keyless ones only cover for it.
+On Fly:
+
+```sh
+fly secrets set TT_LLM_GROQ_KEY=... TT_LLM_GEMINI_KEY=...   # any of them, all optional
+fly secrets set TT_LLM_KEYLESS=0                            # titles only to the keyed providers
+```
+
+The relay prints the chain it will use when it starts.
 
 ## Tests
 
