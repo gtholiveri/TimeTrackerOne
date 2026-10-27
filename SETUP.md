@@ -89,6 +89,17 @@ Check: `Test-Path server\deploy\fly-setup.ps1` is True.
 5. **(Gabe)**: in Chrome, install "ActivityWatch Web Watcher" from the Chrome
    Web Store. Then a bucket starting `aw-watcher-web-chrome` appears in the
    same list after a page or two.
+6. Once the relay is up (step 2), make the tray's "Open Dashboard" open the
+   relay's dashboard. Needs AutoHotkey v2. From the `server` folder:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File deploy\aw-tray.ps1 -Relay https://<name>.fly.dev
+   ```
+
+   aw-qt has no setting for that URL, so this swaps its tray for
+   `deploy\aw-tray.ahk` and runs aw-qt with `--no-gui` (details at the top of
+   both files). Run it again after updating ActivityWatch; `-Uninstall` goes
+   back to the stock tray.
 
 ## 4. Mirror the laptop to the relay
 
