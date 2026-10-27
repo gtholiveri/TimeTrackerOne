@@ -121,6 +121,12 @@
   box-sizing: border-box;
 }
 
+/* Reserve the scrollbar's room, so content that grows or shrinks past the
+   fold doesn't shift the page sideways. */
+html {
+  scrollbar-gutter: stable;
+}
+
 html,
 body {
   margin: 0;
@@ -502,8 +508,16 @@ a:focus-visible {
   pointer-events: none;
 }
 
-.tooltip {
+.tooltip-anchor {
   position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+}
+
+.tooltip {
+  position: fixed;
   z-index: 30;
   pointer-events: none;
   background: var(--surface);
