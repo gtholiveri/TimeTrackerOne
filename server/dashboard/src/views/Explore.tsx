@@ -1,6 +1,7 @@
 // The analytical view: one filter row above everything, then stat tiles,
 // time per day (or hour) stacked, the weekday-by-hour heatmap, a top table you
-// can group any way, day strips, and the activity log.
+// can group any way, the flow (where time went, what led to what), day strips,
+// and the activity log.
 
 import { useMemo, useState } from "react";
 import { coalesce, perDay, perHour, ranked, subject, sumBy, weekHourGrid, type CSeg } from "../lib/aggregate";
@@ -10,9 +11,12 @@ import { useActivity, useApp, useDerived, useNow } from "../lib/store";
 import { DAY, addDays, dayStart, fmtDuration, fmtHour, fmtShortDay, fmtTime, type Range } from "../lib/time";
 import { CategoryBars, RatingSplit, ratingTotals, Tile } from "../components/Figures";
 import { Heatmap } from "../components/Heatmap";
+import { Sankey } from "../components/Sankey";
 import { StackedColumns, type Column, type Part } from "../components/StackedColumns";
 import { Timeline } from "../components/Timeline";
 import { usePref } from "../components/usePref";
+import { useWidth } from "../components/useWidth";
+import { transitionFlow, whereFlow } from "../lib/flows";
 
 type Preset = "today" | "yesterday" | "7d" | "30d" | "custom";
 type StackBy = "category" | "rating" | "device";
@@ -167,6 +171,8 @@ export function Explore() {
           </div>
         </div>
 
+        <FlowCard segs={segs} perHost={view === "devices"} label={label} />
+
         <div className="card">
           <div className="card-head">
             <h2>Top</h2>
@@ -264,6 +270,68 @@ function ColumnsChart({ segs, range, singleDay, stackBy }: { segs: CSeg[]; range
         ))}
       </div>
     </>
+  );
+}
+
+type FlowMode = "where" | "switches";
+
+/** The Sankey card: where the time went, or what each activity led to. */
+function FlowCard({ segs, perHost, label }: { segs: CSeg[]; perHost: boolean; label: (h: string) => string }) {
+  const { cats } = useApp();
+  const [ref, width] = useWidth<HTMLDivElement>();
+  const [mode, setMode] = usePref<FlowMode>("explore.flow", "where");
+  const [weight, setWeight] = usePref<"time" | "count">("explore.flowWeight", "time");
+  // On a phone: no device column and fewer apps, so the labels have room.
+  const narrow = width < 560;
+  const devices = !narrow && new Set(segs.map((s) => s.host)).size > 1;
+
+  const graph = useMemo(
+    () =>
+      mode === "where"
+        ? whereFlow(segs, cats, { deviceLabel: label, topN: narrow ? 3 : 5, devices })
+        : transitionFlow(segs, { weight, perHost, topN: narrow ? 6 : 8, minShare: 0.008 }),
+    // label is a fresh closure each render; devices drive it
+    [segs, cats, mode, weight, perHost, narrow, devices],
+  );
+  const titles = mode === "switches" ? ["From", "Then"] : devices ? ["Device", "Category", "App / site"] : ["Category", "App / site"];
+  const most = Math.max(0, ...[0, 1, 2].map((c) => graph.nodes.filter((n) => n.col === c).length));
+  const height = Math.min(620, Math.max(240, 30 + most * (mode === "switches" ? 38 : 30)));
+  const gutters: [number, number] = useMemo(
+    () =>
+      mode === "switches"
+        ? [Math.min(180, width * 0.32), Math.min(180, width * 0.32)]
+        : [Math.min(devices ? 120 : 150, width * 0.3), Math.min(210, width * 0.36)],
+    [mode, width, devices],
+  );
+
+  return (
+    <div className="card" ref={ref}>
+      <div className="card-head" style={{ flexWrap: "wrap" }}>
+        <h2>Flow</h2>
+        <span className="spacer" />
+        {mode === "switches" && (
+          <div className="seg-control" role="group" aria-label="Weigh switches by">
+            <button aria-pressed={weight === "time"} onClick={() => setWeight("time")} title="Width: time spent after the switch">Time</button>
+            <button aria-pressed={weight === "count"} onClick={() => setWeight("count")} title="Width: how many times">Count</button>
+          </div>
+        )}
+        <div className="seg-control" role="group" aria-label="Flow">
+          <button aria-pressed={mode === "where"} onClick={() => setMode("where")}>Where time went</button>
+          <button aria-pressed={mode === "switches"} onClick={() => setMode("switches")}>What led to what</button>
+        </div>
+      </div>
+      {graph.links.length ? (
+        <Sankey graph={graph} titles={titles} height={height} gutters={gutters} />
+      ) : (
+        <div className="empty">{mode === "where" ? "Nothing matches." : "No switches between categories."}</div>
+      )}
+      {mode === "switches" && graph.links.length > 0 && (
+        <p className="muted small" style={{ margin: "8px 0 0" }}>
+          Each switch from one category to another. Stays under a minute and the Home Screen are skipped, breaks
+          over 15 minutes end a chain, and the thinnest links are left out. {weight === "time" ? "Width is the time spent after the switch." : "Width is how often."}
+        </p>
+      )}
+    </div>
   );
 }
 
