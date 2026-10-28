@@ -11,20 +11,21 @@ export type View = Range;
 /** The closest the timeline zooms in: five minutes across. */
 export const MIN_SPAN = 5 * MINUTE;
 
-/** The window, no wider than `full`, no narrower than MIN_SPAN, inside it. */
-export function clampView(v: View, full: Range, minSpan = MIN_SPAN): View {
-  const fullSpan = full.end - full.start;
+/** The window inside `full`: no wider than it (or `maxSpan`), no narrower
+ *  than `minSpan`. */
+export function clampView(v: View, full: Range, minSpan = MIN_SPAN, maxSpan = Infinity): View {
+  const fullSpan = Math.min(full.end - full.start, maxSpan);
   const span = Math.min(fullSpan, Math.max(Math.min(minSpan, fullSpan), v.end - v.start));
   const start = Math.min(Math.max(v.start, full.start), full.end - span);
   return { start, end: start + span };
 }
 
 /** Zoom by `factor` (below 1 zooms in) keeping time `t` where it is. */
-export function zoomAt(v: View, t: number, factor: number, full: Range): View {
+export function zoomAt(v: View, t: number, factor: number, full: Range, maxSpan = Infinity): View {
   const span = v.end - v.start;
-  const next = Math.min(full.end - full.start, Math.max(MIN_SPAN, span * factor));
+  const next = Math.min(full.end - full.start, maxSpan, Math.max(MIN_SPAN, span * factor));
   const f = span > 0 ? (t - v.start) / span : 0.5;
-  return clampView({ start: t - f * next, end: t - f * next + next }, full);
+  return clampView({ start: t - f * next, end: t - f * next + next }, full, MIN_SPAN, maxSpan);
 }
 
 export const panBy = (v: View, ms: number, full: Range): View => clampView({ start: v.start + ms, end: v.end + ms }, full);

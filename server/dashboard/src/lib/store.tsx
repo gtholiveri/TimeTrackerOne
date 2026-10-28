@@ -7,7 +7,7 @@ import { categorizeAll, type CSeg } from "./aggregate";
 import { api, type TTState } from "./api";
 import { ATTENTION_KEY, DEFAULT_ATTENTION, mergeAttention, parseAttention, type AttentionConfig } from "./attention";
 import { AW_DEFAULT_CLASSES, CategorySet, forSaving, type ClassDef } from "./categories";
-import { parseStartOfDay, type Range } from "./time";
+import { addDays, parseStartOfDay, type Range } from "./time";
 
 interface AppState {
   devices: Device[];
@@ -124,18 +124,96 @@ export function useActivity(range: Range, refreshMs = 60_000): Activity {
   return { ...state, reload };
 }
 
+export interface DayActivity {
+  lanes: Lane[];
+  loadedAt: number;
+}
+
+export interface Days {
+  /** Day start -> its activity, for the days loaded so far. */
+  days: Map<number, DayActivity>;
+  loading: boolean;
+  error: string | null;
+  reload: () => void;
+}
+
+/** Activity for the days `first` through `last` (day starts), fetched a day at
+ *  a time and kept, so moving the window across midnight only fetches the day
+ *  it reaches. A day that includes now is refetched every `refreshMs`. */
+export function useDays(first: number, last: number, refreshMs = 60_000): Days {
+  const { devices, dayOffset } = useApp();
+  const [days, setDays] = useState(() => new Map<number, DayActivity>());
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(0);
+  const inflight = useRef(new Set<number>());
+  const gen = useRef(0);
+
+  const starts = useMemo(() => {
+    const out: number[] = [];
+    for (let d = first; d <= last; d = addDays(d, 1, dayOffset)) out.push(d);
+    return out;
+  }, [first, last, dayOffset]);
+
+  const load = useCallback(
+    (start: number) => {
+      if (inflight.current.has(start)) return;
+      inflight.current.add(start);
+      setPending((n) => n + 1);
+      const g = gen.current;
+      const end = addDays(start, 1, dayOffset);
+      fetchRaw(devices, start, end)
+        .then((raws) => {
+          if (g !== gen.current) return;
+          const lanes = raws.map((raw) => ({ device: raw.device, raw, segs: buildSegs(raw, start, end) }));
+          setDays((m) => new Map(m).set(start, { lanes, loadedAt: Date.now() }));
+          setError(null);
+        })
+        .catch((e: Error) => g === gen.current && setError(e.message))
+        .finally(() => {
+          if (g !== gen.current) return;
+          inflight.current.delete(start);
+          setPending((n) => n - 1);
+        });
+    },
+    [devices, dayOffset],
+  );
+
+  // A new device list or start of day makes every loaded day stale.
+  useEffect(() => {
+    gen.current++;
+    inflight.current.clear();
+    setPending(0);
+    setDays(new Map());
+  }, [devices, dayOffset]);
+
+  useEffect(() => {
+    for (const d of starts) if (!days.has(d)) load(d);
+  }, [starts, days, load]);
+
+  const liveDay = starts.find((d) => d <= Date.now() && Date.now() < addDays(d, 1, dayOffset));
+  useEffect(() => {
+    if (liveDay === undefined) return;
+    const t = setInterval(() => document.visibilityState === "visible" && load(liveDay), refreshMs);
+    return () => clearInterval(t);
+  }, [liveDay, load, refreshMs]);
+
+  const reload = useCallback(() => starts.forEach(load), [starts, load]);
+  return { days, loading: pending > 0, error, reload };
+}
+
 export interface Derived {
   lanes: { device: Device; segs: CSeg[] }[];
   merged: CSeg[];
 }
 
 /** Categorized lanes plus the merged attention line. */
+export function derive(lanes: Lane[], cats: CategorySet, cfg: AttentionConfig): Derived {
+  const cl = lanes.map((l) => ({ device: l.device, segs: categorizeAll(l.segs, cats) }));
+  return { lanes: cl, merged: mergeAttention(cl.map((l) => l.segs), cfg) };
+}
+
 export function useDerived(lanes: Lane[] | null, cats: CategorySet, cfg: AttentionConfig): Derived | null {
-  return useMemo(() => {
-    if (!lanes) return null;
-    const cl = lanes.map((l) => ({ device: l.device, segs: categorizeAll(l.segs, cats) }));
-    return { lanes: cl, merged: mergeAttention(cl.map((l) => l.segs), cfg) };
-  }, [lanes, cats, cfg]);
+  return useMemo(() => (lanes ? derive(lanes, cats, cfg) : null), [lanes, cats, cfg]);
 }
 
 /** The relay's live feed (the phone's current state), polled while visible. */

@@ -501,6 +501,19 @@ a:focus-visible {
   stroke-width: 1;
 }
 
+/* Where one day ends and the next begins. */
+.chart .day-line {
+  stroke: var(--axis);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  shape-rendering: crispEdges;
+}
+
+.chart text.day-label {
+  fill: var(--ink-2);
+  font-weight: 600;
+}
+
 .chart .hover-line {
   stroke: var(--ink);
   stroke-width: 1;

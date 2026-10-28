@@ -1,5 +1,6 @@
 // The glance view: what each device is doing now, today's total and how it
-// splits, and the day as a zoomable line (see FlowTimeline).
+// splits, and the day as a zoomable line (see FlowTimeline) that keeps going
+// into the days before and after.
 
 import { useMemo, useState } from "react";
 import type { Device, Seg } from "../lib/activity";
@@ -8,58 +9,113 @@ import { visibleRange } from "../components/Timeline";
 import { sumBy } from "../lib/aggregate";
 import type { AWEvent, TTState } from "../lib/api";
 import { choose, isBackground } from "../lib/attention";
-import { useActivity, useApp, useDerived, useLiveState, useNow, type Lane } from "../lib/store";
-import { MINUTE, addDays, dayStart, fmtAgo, fmtDay, fmtDuration, fmtTime } from "../lib/time";
+import { derive, useApp, useDays, useLiveState, useNow, type DayActivity, type Derived, type Lane } from "../lib/store";
+import { HOUR, MINUTE, addDays, dayStart, fmtAgo, fmtDay, fmtDuration, fmtShortDay, fmtTime } from "../lib/time";
 import { CategoryBars, RatingSplit, ratingTotals } from "../components/Figures";
 import { slotColor } from "../lib/palette";
 
 export function Today() {
   const { cats, attention, dayOffset, devices } = useApp();
   const now = useNow(30_000);
-  const [shift, setShift] = useState(0);
   const today = dayStart(now, dayOffset);
-  const range = useMemo(() => {
-    const start = addDays(today, shift, dayOffset);
-    return { start, end: addDays(start, 1, dayOffset) };
-  }, [today, shift, dayOffset]);
-  const isToday = shift === 0;
-  const act = useActivity(range);
-  const derived = useDerived(act.lanes, cats, attention);
+  // The day the page is about: picked with the arrows, or the one the
+  // timeline's window is centred in. null follows today (across midnight too).
+  const [pick, setPick] = useState<number | null>(null);
+  const focus = pick ?? today;
+  const isToday = focus === today;
+  // Days loaded for the timeline: the focused one and its neighbours, grown
+  // a day at a time as the window nears either end.
+  const around = (d: number) => ({ first: addDays(d, -1, dayOffset), last: Math.min(today, addDays(d, 1, dayOffset)) });
+  const [win, setWin] = useState(() => around(focus));
+  const [jump, setJump] = useState(0);
+  // On today the window always reaches it, even after midnight moves "today".
+  const lastDay = isToday ? today : Math.min(win.last, today);
+  const days = useDays(win.first, lastDay);
   const live = useLiveState();
   const label = (host: string) => devices.find((d) => d.host === host)?.label ?? host;
 
+  // Categorized once per loaded day (a refetch of today leaves the others be).
+  const cache = useMemo(() => new WeakMap<DayActivity, Derived>(), [cats, attention]);
+  const derivedOf = (d: number) => {
+    const a = days.days.get(d);
+    if (!a) return null;
+    let out = cache.get(a);
+    if (!out) cache.set(a, (out = derive(a.lanes, cats, attention)));
+    return out;
+  };
+
+  const focusAct = days.days.get(focus) ?? null;
+  const derived = derivedOf(focus);
   const merged = derived?.merged ?? [];
-  const deviceLanes = useMemo(() => derived?.lanes.map((l) => ({ label: l.device.label, segs: l.segs })) ?? [], [derived]);
   const total = merged.reduce((a, s) => a + (s.end - s.start) / 1000, 0);
   const byDevice = [...sumBy(merged, (s) => s.host)].sort((a, b) => b[1] - a[1]);
+
+  // The timeline gets every loaded day joined end to end.
+  const line = useMemo(() => {
+    const loaded: Derived[] = [];
+    for (let d = win.first; d <= lastDay; d = addDays(d, 1, dayOffset)) {
+      const x = derivedOf(d);
+      if (x) loaded.push(x);
+    }
+    return {
+      segs: loaded.flatMap((x) => x.merged),
+      lanes: devices.map((dev) => ({
+        label: dev.label,
+        segs: loaded.flatMap((x) => x.lanes.find((l) => l.device.host === dev.host)?.segs ?? []),
+      })),
+    };
+  }, [days.days, cache, win.first, lastDay, dayOffset, devices]);
+
+  const focusRange = { start: focus, end: addDays(focus, 1, dayOffset) };
+  const fit = visibleRange(focusRange, derived?.lanes.flatMap((l) => l.segs) ?? [], isToday ? now : null);
+  const hourAfterNow = new Date(now + 15 * MINUTE).setMinutes(0, 0, 0) + HOUR;
+  const bounds = { start: win.first, end: Math.min(addDays(lastDay, 1, dayOffset), hourAfterNow) };
+
+  const go = (d: number) => {
+    const day = Math.min(d, today);
+    setPick(day === today ? null : day);
+    setWin(around(day));
+    setJump((n) => n + 1);
+  };
+  // Moving the window: the page follows the day it's centred in, and the next
+  // day out loads before the window gets there.
+  const onView = (v: { start: number; end: number }) => {
+    const d = dayStart((v.start + v.end) / 2, dayOffset);
+    setPick(d >= today ? null : d);
+    setWin((w) => {
+      const first = v.start - w.first < 12 * HOUR ? addDays(w.first, -1, dayOffset) : w.first;
+      const last = w.last < today && addDays(w.last, 1, dayOffset) - v.end < 12 * HOUR ? addDays(w.last, 1, dayOffset) : w.last;
+      return first === w.first && last === w.last ? w : { first, last };
+    });
+  };
 
   return (
     <div className="stack">
       <div className="day-nav">
-        <button className="icon-btn" onClick={() => setShift(shift - 1)} aria-label="Previous day">‹</button>
-        <h1>{isToday ? "Today" : fmtDay(range.start)}</h1>
-        <button className="icon-btn" onClick={() => setShift(shift + 1)} disabled={isToday} aria-label="Next day">›</button>
-        {!isToday && <button className="btn" onClick={() => setShift(0)}>Today</button>}
+        <button className="icon-btn" onClick={() => go(addDays(focus, -1, dayOffset))} aria-label="Previous day">‹</button>
+        <h1>{isToday ? "Today" : fmtDay(focus)}</h1>
+        <button className="icon-btn" onClick={() => go(addDays(focus, 1, dayOffset))} disabled={isToday} aria-label="Next day">›</button>
+        {!isToday && <button className="btn" onClick={() => go(today)}>Today</button>}
         <span className="spacer" style={{ flex: 1 }} />
-        <span className="muted small" title={act.error ?? undefined}>
-          <span className={`live-dot${act.error ? " stale" : ""}`} />{" "}
-          {act.error ? "Couldn't refresh" : act.loadedAt ? `Updated ${fmtAgo(act.loadedAt, now)}` : "Loading…"}
+        <span className="muted small" title={days.error ?? undefined}>
+          <span className={`live-dot${days.error ? " stale" : ""}`} />{" "}
+          {days.error ? "Couldn't refresh" : focusAct ? `Updated ${fmtAgo(focusAct.loadedAt, now)}` : "Loading…"}
         </span>
-        <button className="icon-btn" onClick={act.reload} aria-label="Refresh">↻</button>
+        <button className="icon-btn" onClick={days.reload} aria-label="Refresh">↻</button>
       </div>
 
-      {act.error && !act.lanes && <div className="card error">Couldn't load activity: {act.error}</div>}
+      {days.error && !focusAct && <div className="card error">Couldn't load activity: {days.error}</div>}
 
-      {isToday && act.lanes && <NowCards lanes={act.lanes} live={live} now={now} />}
+      {isToday && focusAct && <NowCards lanes={focusAct.lanes} live={live} now={now} />}
 
-      <div className="today-grid" style={{ opacity: act.loading && act.lanes ? 0.7 : 1 }}>
+      <div className="today-grid" style={{ opacity: days.loading && focusAct ? 0.85 : 1 }}>
         <div className="card">
           <h2>{isToday ? "On screens today" : "On screens"}</h2>
           <div className="hero">{fmtDuration(total)}</div>
           <div className="hero-sub">
             {byDevice.length
               ? byDevice.map(([host, sec]) => `${label(host)} ${fmtDuration(sec)}`).join(" · ")
-              : act.lanes ? "Nothing yet" : "Loading…"}
+              : focusAct ? "Nothing yet" : "Loading…"}
           </div>
           <div style={{ marginTop: 18 }}>
             <RatingSplit totals={ratingTotals(merged)} />
@@ -72,18 +128,21 @@ export function Today() {
       </div>
 
       <div className="card">
-        {derived ? (
+        {line.segs.length || focusAct ? (
           <FlowTimeline
-            title={isToday ? "Today" : "The day"}
-            range={visibleRange(range, derived.lanes.flatMap((l) => l.segs), isToday ? now : null)}
-            now={isToday ? now : undefined}
-            segs={derived.merged}
-            lanes={deviceLanes}
+            title={isToday ? "Today" : fmtShortDay(focus)}
+            bounds={bounds}
+            fit={fit}
+            jump={jump}
+            onView={onView}
+            now={now}
+            segs={line.segs}
+            lanes={line.lanes}
             deviceLabel={label}
           />
         ) : (
           <>
-            <h2>{isToday ? "Today" : "The day"}</h2>
+            <h2>{isToday ? "Today" : fmtShortDay(focus)}</h2>
             <div className="empty">Loading…</div>
           </>
         )}

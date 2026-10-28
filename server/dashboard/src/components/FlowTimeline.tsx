@@ -2,21 +2,22 @@
 // window: Flow (a single line that rises and falls between category tracks,
 // productive at the top, with what each stretch was about written above it),
 // Blocks (the day as labeled bars, like a calendar) and Devices (a lane per
-// device). Wheel or pinch zooms around the pointer, drag pans, the strip
-// underneath shows the whole day with the window on it, and clicking a block
-// zooms to it. Nothing here changes size on hover.
+// device). Wheel or pinch zooms around the pointer, drag pans, and panning
+// carries on across midnight into the days either side (the caller loads them
+// as the window nears them). The strip underneath shows the day the window is
+// in, and clicking a block zooms to it. Nothing here changes size on hover.
 
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { subject, type CSeg } from "../lib/aggregate";
 import { buildBlocks, displayName, type Block } from "../lib/blocks";
 import type { Category } from "../lib/categories";
 import {
-  axisTicks, clampView, firstEndingAfter, linePieces, nearestAt, panBy, sCurve, sameView, zoomAt, type Piece, type View,
+  MIN_SPAN, axisTicks, clampView, firstEndingAfter, linePieces, nearestAt, panBy, sCurve, sameView, zoomAt, type Piece, type View,
 } from "../lib/flow";
 import { useBlockLabels } from "../lib/labels";
 import { slotColor } from "../lib/palette";
 import { useApp } from "../lib/store";
-import { MINUTE, fmtDuration, fmtTime, type Range } from "../lib/time";
+import { DAY, MINUTE, daysIn, fmtDuration, fmtShortDay, fmtTime, type Range } from "../lib/time";
 import { SegTip, type TimelineLane } from "./Timeline";
 import { Tooltip, type TipState } from "./Tooltip";
 import { usePref } from "./usePref";
@@ -30,11 +31,20 @@ interface Props {
   segs: CSeg[];
   /** One lane per device, for the Devices view. */
   lanes: TimelineLane[];
-  /** The stretch shown when zoomed all the way out. */
-  range: Range;
+  /** How far the window can move: the days loaded, up to now. */
+  bounds: Range;
+  /** The day's stretch: the first window, "Fit day", and the strip below. */
+  fit: Range;
+  /** Changes when the caller moves to another day; the window goes to `fit`. */
+  jump?: number;
+  /** Told the window after every move. */
+  onView?: (view: View) => void;
   now?: number;
   deviceLabel?: (host: string) => string;
 }
+
+/** The widest the window zooms out to. */
+const MAX_SPAN = DAY;
 
 // Flow geometry: room for labels above the first track, track spacing, the
 // "away" baseline under the last one.
@@ -52,10 +62,11 @@ const SUB_FONT = `10.5px ${FONT}`;
 const BAR_FONT = `500 12px ${FONT}`;
 const NAME_FONT = `12px ${FONT}`;
 
-export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabel }: Props) {
-  const { cats } = useApp();
-  // Callers build the range each render; one object per value keeps the memos below.
-  const range = useMemo(() => ({ start: given.start, end: given.end }), [given.start, given.end]);
+export function FlowTimeline({ title, segs, lanes, bounds: givenBounds, fit: givenFit, jump = 0, onView, now, deviceLabel }: Props) {
+  const { cats, dayOffset } = useApp();
+  // Callers build ranges each render; one object per value keeps the memos below.
+  const bounds = useMemo(() => ({ start: givenBounds.start, end: givenBounds.end }), [givenBounds.start, givenBounds.end]);
+  const range = useMemo(() => ({ start: givenFit.start, end: givenFit.end }), [givenFit.start, givenFit.end]);
   const [mode, setMode] = usePref<Mode>("today.timeline", "flow");
   const [ref, width] = useWidth<HTMLDivElement>();
   const uid = useId().replace(/:/g, "");
@@ -78,7 +89,13 @@ export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabe
   const names = mode === "flow" ? tracks.map((c) => textWidth(trackName(c), NAME_FONT) + 14) : ["Merged", ...lanes.map((l) => l.label)].map((n) => textWidth(n, NAME_FONT));
   const gutter = Math.round(Math.min(width * 0.3, 110, Math.max(36, ...names) + 10));
   const plotW = Math.max(40, width - gutter);
-  const { view, set, animateTo } = useViewport(range);
+  const { view, set, animateTo } = useViewport(bounds, range, jump);
+  const clamp = (v: View) => clampView(v, bounds, MIN_SPAN, MAX_SPAN);
+  const zoom = (v: View, t: number, factor: number) => zoomAt(v, t, factor, bounds, MAX_SPAN);
+  const pan = (v: View, ms: number) => panBy(v, ms, bounds);
+  const onViewRef = useRef(onView);
+  onViewRef.current = onView;
+  useEffect(() => onViewRef.current?.(view), [view.start, view.end]);
   const span = view.end - view.start;
   const x = (t: number) => gutter + ((t - view.start) / span) * plotW;
   const tAt = (px: number) => view.start + ((px - gutter) / plotW) * span;
@@ -306,8 +323,8 @@ export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabe
   // ------------------------------------------------------------ hover
   const [hover, setHover] = useState<{ px: number; py: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const live = useRef({ view, range, set, tAt, plotW, span });
-  live.current = { view, range, set, tAt, plotW, span };
+  const live = useRef({ view, range, set, tAt, plotW, span, zoom, pan });
+  live.current = { view, range, set, tAt, plotW, span, zoom, pan };
 
   let tip: TipState | null = null;
   let overlay: ReactNode = null;
@@ -377,7 +394,7 @@ export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabe
       const [a, b] = [...pointers.current.values()];
       const next = ((pz.view.end - pz.view.start) * pz.d) / Math.max(10, Math.abs(a - b));
       const start = pz.t - ((localX((a + b) / 2) - gutter) / plotW) * next;
-      set(clampView({ start, end: start + next }, range));
+      set(clamp({ start, end: start + next }));
       return;
     }
     const d = drag.current;
@@ -385,7 +402,7 @@ export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabe
       const dx = e.clientX - d.x;
       if (Math.abs(dx) > 4) d.moved = true;
       if (d.moved) {
-        set(panBy(d.view, (-dx / plotW) * (d.view.end - d.view.start), range));
+        set(pan(d.view, (-dx / plotW) * (d.view.end - d.view.start)));
         setHover(null);
         return;
       }
@@ -419,9 +436,9 @@ export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabe
     }
     if (bl) {
       const pad = Math.max((bl.end - bl.start) * 0.12, MINUTE);
-      const target = clampView({ start: bl.start - pad, end: bl.end + pad }, range);
-      animateTo(sameView(target, view, 30_000) ? zoomAt(view, t, 0.4, range) : target);
-    } else animateTo(zoomAt(view, t, 0.5, range));
+      const target = clamp({ start: bl.start - pad, end: bl.end + pad });
+      animateTo(sameView(target, view, 30_000) ? zoom(view, t, 0.4) : target);
+    } else animateTo(zoom(view, t, 0.5));
   };
 
   const onCancel = (e: PointerEvent<SVGSVGElement>) => {
@@ -431,24 +448,24 @@ export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabe
   };
 
   // Wheel: native and non-passive, so the page doesn't scroll while zooming.
-  // Zoomed all the way out, scrolling down still scrolls the page.
+  // Zoomed out to the day or wider, scrolling down still scrolls the page.
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      const { view, range, set, tAt, plotW, span } = live.current;
+      const { range, set, tAt, plotW, span, zoom, pan } = live.current;
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
       const dx = e.deltaX * unit;
       const dy = e.deltaY * unit;
       if (Math.abs(dx) > Math.abs(dy)) {
         e.preventDefault();
-        set(panBy(view, (dx / plotW) * span, range));
+        set(pan(live.current.view, (dx / plotW) * span));
         return;
       }
       const factor = Math.exp(dy * (e.ctrlKey ? 0.01 : 0.0015));
-      if (factor > 1 && sameView(view, range)) return;
+      if (factor > 1 && span >= range.end - range.start - 1000) return;
       e.preventDefault();
-      set(zoomAt(view, tAt(e.clientX - el.getBoundingClientRect().left), factor, range));
+      set(zoom(live.current.view, tAt(e.clientX - el.getBoundingClientRect().left), factor));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -457,13 +474,13 @@ export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabe
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const mid = view.start + span / 2;
     const act: Record<string, () => void> = {
-      ArrowLeft: () => animateTo(panBy(view, -span * 0.25, range)),
-      ArrowRight: () => animateTo(panBy(view, span * 0.25, range)),
-      ArrowUp: () => animateTo(zoomAt(view, mid, 0.5, range)),
-      ArrowDown: () => animateTo(zoomAt(view, mid, 2, range)),
-      "+": () => animateTo(zoomAt(view, mid, 0.5, range)),
-      "=": () => animateTo(zoomAt(view, mid, 0.5, range)),
-      "-": () => animateTo(zoomAt(view, mid, 2, range)),
+      ArrowLeft: () => animateTo(pan(view, -span * 0.25)),
+      ArrowRight: () => animateTo(pan(view, span * 0.25)),
+      ArrowUp: () => animateTo(zoom(view, mid, 0.5)),
+      ArrowDown: () => animateTo(zoom(view, mid, 2)),
+      "+": () => animateTo(zoom(view, mid, 0.5)),
+      "=": () => animateTo(zoom(view, mid, 0.5)),
+      "-": () => animateTo(zoom(view, mid, 2)),
       "0": () => animateTo(range),
       Home: () => animateTo(range),
     };
@@ -473,8 +490,11 @@ export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabe
     fn();
   };
 
-  const fitted = sameView(view, range);
-  const zoomed = span <= 5 * MINUTE + 1000;
+  const fitted = sameView(view, clamp(range));
+  const widest = span >= Math.min(MAX_SPAN, bounds.end - bounds.start) - 1000;
+  const zoomed = span <= MIN_SPAN + 1000;
+  // Where one day turns into the next, inside the window.
+  const midnights = daysIn(view, dayOffset).filter((d) => d > view.start);
   const mid = view.start + span / 2;
 
   return (
@@ -482,7 +502,7 @@ export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabe
       <div className="card-head flow-head">
         <h2>{title}</h2>
         <span className="flow-window muted small num">
-          {fitted ? "" : `${fmtTime(view.start)} – ${fmtTime(view.end)}`}
+          {fitted ? "" : midnights.length ? `${fmtShortDay(view.start)} ${fmtTime(view.start)} – ${fmtShortDay(view.end)} ${fmtTime(view.end)}` : `${fmtTime(view.start)} – ${fmtTime(view.end)}`}
         </span>
         <span className="spacer" />
         <div className="seg-control" role="group" aria-label="Timeline view">
@@ -491,12 +511,12 @@ export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabe
           <button aria-pressed={mode === "devices"} onClick={() => setMode("devices")}>Devices</button>
         </div>
         <div className="flow-zoom" role="group" aria-label="Zoom">
-          <button className="icon-btn" onClick={() => animateTo(zoomAt(view, mid, 2, range))} disabled={fitted} aria-label="Zoom out">−</button>
-          <button className="icon-btn" onClick={() => animateTo(zoomAt(view, mid, 0.5, range))} disabled={zoomed} aria-label="Zoom in">+</button>
+          <button className="icon-btn" onClick={() => animateTo(zoom(view, mid, 2))} disabled={widest} aria-label="Zoom out">−</button>
+          <button className="icon-btn" onClick={() => animateTo(zoom(view, mid, 0.5))} disabled={zoomed} aria-label="Zoom in">+</button>
           <button className="icon-btn" onClick={() => animateTo(range)} disabled={fitted}>Fit day</button>
         </div>
       </div>
-      <div className="chart" ref={ref} tabIndex={0} aria-label="Timeline. Arrow keys pan and zoom, 0 fits the day.">
+      <div className="chart" ref={ref} tabIndex={0} aria-label="Timeline. Arrow keys pan and zoom across days, 0 fits the day.">
         <svg ref={svgRef} className="flow-plot" width={width} height={height} role="img"
           aria-label={`Timeline of ${segs.length} pieces of activity`}
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onCancel}
@@ -521,18 +541,28 @@ export function FlowTimeline({ title, segs, lanes, range: given, now, deviceLabe
             </g>
           )}
           {plot}
+          {midnights.map((d) => (
+            <line key={d} className="day-line" x1={x(d)} x2={x(d)} y1={0} y2={plotH} />
+          ))}
           {now !== undefined && now > view.start && now < view.end && (
             <line className="now-line" x1={x(now)} x2={x(now)} y1={0} y2={plotH} />
           )}
           {overlay}
-          {ticks.list.map((t) => (
-            <text key={t} x={x(t)} y={height - 7} textAnchor="middle">
-              {ticks.fmt(t)}
+          {ticks.list
+            .filter((t) => midnights.every((d) => Math.abs(x(t) - x(d)) > 44))
+            .map((t) => (
+              <text key={t} x={x(t)} y={height - 7} textAnchor="middle">
+                {ticks.fmt(t)}
+              </text>
+            ))}
+          {midnights.map((d) => (
+            <text key={d} className="day-label" x={x(d)} y={height - 7} textAnchor="middle">
+              {fmtShortDay(d)}
             </text>
           ))}
         </svg>
         <Minimap segs={segs} trackOf={trackOf} tracks={Math.max(1, tracks.length)} colors={colors} range={range}
-          view={view} set={set} gutter={gutter} plotW={plotW} width={width} now={now} />
+          view={view} set={set} clamp={clamp} gutter={gutter} plotW={plotW} width={width} now={now} />
         <Tooltip tip={tip} width={width} />
       </div>
       {mode !== "flow" && <Legend tracks={tracks} />}
@@ -546,21 +576,29 @@ const LANE_GAP = 10;
 
 // ------------------------------------------------------------------ viewport
 
-/** The visible window (the whole range until zoomed), and smooth moves to a
- *  new one. A new day starts zoomed out. */
-function useViewport(full: Range) {
+/** The visible window (`fit` until zoomed or moved), kept inside `bounds`, and
+ *  smooth moves to a new one. A new `jump` goes back to `fit`. */
+function useViewport(bounds: Range, fit: Range, jump: number) {
   const [stored, setStored] = useState<View | null>(null);
-  const view = useMemo(() => (stored ? clampView(stored, full) : full), [stored, full]);
+  const [seenJump, setSeenJump] = useState(jump);
+  if (seenJump !== jump) {
+    // Reset during render, so no effect ever sees the old day's window.
+    setSeenJump(jump);
+    setStored(null);
+  }
+  const view = useMemo(() => clampView(stored ?? fit, bounds, MIN_SPAN, MAX_SPAN), [stored, fit, bounds]);
   const current = useRef(view);
   current.current = view;
-  const fullRef = useRef(full);
-  fullRef.current = full;
+  const limits = useRef({ bounds, fit });
+  limits.current = { bounds, fit };
   const anim = useRef(0);
 
-  useEffect(() => setStored(null), [full.start]);
+  useEffect(() => cancelAnimationFrame(anim.current), [jump]);
   useEffect(() => () => cancelAnimationFrame(anim.current), []);
 
-  const settle = (v: View) => (sameView(clampView(v, fullRef.current), fullRef.current) ? null : v);
+  const clamp = (v: View) => clampView(v, limits.current.bounds, MIN_SPAN, MAX_SPAN);
+  // Back on the day's own stretch, follow it again (it grows while live).
+  const settle = (v: View) => (sameView(clamp(v), clamp(limits.current.fit)) ? null : v);
   const set = (v: View) => {
     cancelAnimationFrame(anim.current);
     setStored(settle(v));
@@ -568,7 +606,7 @@ function useViewport(full: Range) {
   const animateTo = (target: View) => {
     cancelAnimationFrame(anim.current);
     const from = current.current;
-    const to = clampView(target, fullRef.current);
+    const to = clamp(target);
     const t0 = performance.now();
     const step = (t: number) => {
       const k = Math.min(1, (t - t0) / 280);
@@ -592,15 +630,17 @@ interface MiniProps {
   range: Range;
   view: View;
   set: (v: View) => void;
+  clamp: (v: View) => View;
   gutter: number;
   plotW: number;
   width: number;
   now?: number;
 }
 
-/** The whole range as a small line, with the window as a brush: drag it to
- *  move, drag its edges to resize, press elsewhere to jump there. */
-function Minimap({ segs, trackOf, tracks, colors, range, view, set, gutter, plotW, width, now }: MiniProps) {
+/** The day as a small line, with the window as a brush: drag it to move (on
+ *  past the ends into the next day), drag its edges to resize, press
+ *  elsewhere to jump there. */
+function Minimap({ segs, trackOf, tracks, colors, range, view, set, clamp, gutter, plotW, width, now }: MiniProps) {
   const span = range.end - range.start;
   const x = (t: number) => gutter + ((t - range.start) / span) * plotW;
   const yOf = (track: number) => 5 + (tracks > 1 ? (track / (tracks - 1)) * (MINI - 12) : (MINI - 12) / 2);
@@ -615,8 +655,10 @@ function Minimap({ segs, trackOf, tracks, colors, range, view, set, gutter, plot
     });
   }, [segs, trackOf, tracks, range.start, range.end, plotW, gutter, colors.join()]);
 
-  const bx0 = x(view.start);
-  const bx1 = x(view.end);
+  // The part of the window over the day (a window in the next day sits at the edge).
+  const right = gutter + plotW;
+  const bx1 = Math.max(gutter + 2, Math.min(right, x(view.end)));
+  const bx0 = Math.min(bx1 - 2, Math.max(gutter, x(view.start)));
   const drag = useRef<{ kind: "move" | "l" | "r"; x: number; view: View } | null>(null);
 
   const onDown = (e: PointerEvent<SVGSVGElement>) => {
@@ -632,7 +674,7 @@ function Minimap({ segs, trackOf, tracks, colors, range, view, set, gutter, plot
       // Jump: centre the window where pressed.
       const t = range.start + ((px - gutter) / plotW) * span;
       const w = view.end - view.start;
-      start = clampView({ start: t - w / 2, end: t + w / 2 }, range);
+      start = clamp({ start: t - w / 2, end: t + w / 2 });
       set(start);
     }
     drag.current = { kind, x: e.clientX, view: start };
@@ -642,9 +684,9 @@ function Minimap({ segs, trackOf, tracks, colors, range, view, set, gutter, plot
     if (!d) return;
     const dt = ((e.clientX - d.x) / plotW) * span;
     const v = d.view;
-    if (d.kind === "move") set(panBy(v, dt, range));
-    else if (d.kind === "l") set(clampView({ start: Math.min(v.start + dt, v.end - 5 * MINUTE), end: v.end }, range));
-    else set(clampView({ start: v.start, end: Math.max(v.end + dt, v.start + 5 * MINUTE) }, range));
+    if (d.kind === "move") set(clamp({ start: v.start + dt, end: v.end + dt }));
+    else if (d.kind === "l") set(clamp({ start: Math.min(v.start + dt, v.end - MIN_SPAN), end: v.end }));
+    else set(clamp({ start: v.start, end: Math.max(v.end + dt, v.start + MIN_SPAN) }));
   };
   const onUp = () => (drag.current = null);
 
@@ -659,7 +701,7 @@ function Minimap({ segs, trackOf, tracks, colors, range, view, set, gutter, plot
       <rect className="mini-brush" x={bx0} y={0.5} width={Math.max(2, bx1 - bx0)} height={MINI - 1} rx={6} />
       <line className="mini-grip" x1={bx0 + 3.5} x2={bx0 + 3.5} y1={MINI / 2 - 5} y2={MINI / 2 + 5} />
       <line className="mini-grip" x1={bx1 - 3.5} x2={bx1 - 3.5} y1={MINI / 2 - 5} y2={MINI / 2 + 5} />
-      <text className="mini-label" x={0} y={MINI / 2 + 4}>Day</text>
+      <text className="mini-label" x={0} y={MINI / 2 + 4}>{fmtShortDay(range.start).split(/[ ,]/)[0]}</text>
     </svg>
   );
 }
