@@ -801,36 +801,12 @@ table.data .clip {
   stroke-width: 1;
   shape-rendering: crispEdges;
 }
-.chart .flow-away {
-  stroke: var(--grid);
-  stroke-width: 1;
-  stroke-dasharray: 2 4;
-  shape-rendering: crispEdges;
-}
 .chart .flow-names text {
   fill: var(--ink-2);
   font-size: 12px;
 }
-.chart .flow-names text.away {
-  fill: var(--muted);
-}
-.flow-line path {
-  fill: none;
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.flow-glow path {
-  fill: none;
-  stroke-width: 12;
-  stroke-linecap: round;
-  opacity: 0.13;
-}
-.flow-line path.flow-gap {
-  stroke: var(--muted);
-  stroke-width: 2;
-  stroke-dasharray: 0 6;
-  opacity: 0.7;
+.flow-stream path.flow-pause {
+  opacity: 0.3;
 }
 .flow-bracket {
   fill: none;
@@ -855,7 +831,8 @@ table.data .clip {
   stroke-linejoin: round;
 }
 .flow-live {
-  stroke: var(--surface);
+  fill: var(--surface);
+  stroke: none;
   stroke-width: 2;
   animation: flow-pulse 2.4s ease-in-out infinite;
 }

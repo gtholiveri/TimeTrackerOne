@@ -1,8 +1,9 @@
-// The day as a line you can move along. Three views share one zoomable
-// window: Flow (a single line that rises and falls between category tracks,
-// productive at the top, with what each stretch was about written above it),
-// Blocks (the day as labeled bars, like a calendar) and Devices (a lane per
-// device). Wheel or pinch zooms around the pointer, drag pans, and panning
+// The day as a stream you can move along. Three views share one zoomable
+// window: Flow (one thick, Sankey-like stream that rises and falls between
+// category tracks, from work at the top to media at the bottom, with what each
+// stretch was about written above it; time away fades it out), Blocks (the
+// day as labeled bars, like a calendar) and Devices (the same tracks with a
+// thinner stream per device, unfused). Wheel or pinch zooms around the pointer, drag pans, and panning
 // carries on across midnight into the days either side (the caller loads them
 // as the window nears them). The strip underneath shows the day the window is
 // in, and clicking a block zooms to it. Nothing here changes size on hover.
@@ -47,14 +48,16 @@ interface Props {
 const MAX_SPAN = DAY;
 
 // Flow geometry: room for labels above the first track, track spacing, the
-// "away" baseline under the last one.
-const TOP = 30;
-const TRACK = 40;
-const AWAY = 34;
+// stream's thickness (merged, and per device when unfused).
+const TOP = 34;
+const TRACK = 44;
+const BAND = 16;
+const DEVICE_BAND = 9;
 const AXIS = 24;
 const MINI = 30;
-const CURVE = 9; // half-width of the S between touching pieces
-const AWAY_MS = 10 * MINUTE; // gaps at least this long dip to the baseline
+const CURVE = 26; // half-width of the S between touching pieces: wide, like a Sankey link
+const AWAY_MS = 10 * MINUTE; // gaps at least this long fade the stream out
+const FADE = 18; // px over which it fades
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 const LABEL_FONT = `500 11.5px ${FONT}`;
@@ -70,23 +73,24 @@ export function FlowTimeline({ title, segs, lanes, bounds: givenBounds, fit: giv
   const [mode, setMode] = usePref<Mode>("today.timeline", "flow");
   const [ref, width] = useWidth<HTMLDivElement>();
   const uid = useId().replace(/:/g, "");
-  // Tracks: the top-level categories in the day, productive first.
+  // Tracks: the top-level categories in the day, by how good they are: work
+  // at the top, comms, other in the middle, media at the bottom.
   const tracks = useMemo(() => {
     const roots = new Map<string, Category>();
-    for (const s of segs) {
+    for (const s of [...segs, ...lanes.flatMap((l) => l.segs)]) {
       const r = cats.root(s.cat);
       roots.set(r.key, r);
     }
-    const order = (c: Category) => (c === cats.uncategorized ? -0.5 : c.score ?? 0);
+    const order = (c: Category) => goodness(c, c === cats.uncategorized);
     return [...roots.values()].sort((a, b) => order(b) - order(a) || cats.list.indexOf(a) - cats.list.indexOf(b));
-  }, [segs, cats]);
+  }, [segs, lanes, cats]);
   const trackIndex = useMemo(() => new Map(tracks.map((c, i) => [c.key, i])), [tracks]);
   const trackOf = useMemo(() => (s: CSeg) => trackIndex.get(cats.root(s.cat).key) ?? 0, [trackIndex, cats]);
   const colors = tracks.map((c) => slotColor(c.slot));
   const trackName = (c: Category) => (c === cats.uncategorized ? "Other" : c.leaf);
 
   // The names column: as wide as the longest name it shows, within limits.
-  const names = mode === "flow" ? tracks.map((c) => textWidth(trackName(c), NAME_FONT) + 14) : ["Merged", ...lanes.map((l) => l.label)].map((n) => textWidth(n, NAME_FONT));
+  const names = mode === "blocks" ? [0] : tracks.map((c) => textWidth(trackName(c), NAME_FONT) + 14);
   const gutter = Math.round(Math.min(width * 0.3, 110, Math.max(36, ...names) + 10));
   const plotW = Math.max(40, width - gutter);
   const { view, set, animateTo } = useViewport(bounds, range, jump);
@@ -116,143 +120,153 @@ export function FlowTimeline({ title, segs, lanes, bounds: givenBounds, fit: giv
   );
 
   const pieces = useMemo(() => linePieces(segs, trackOf, Math.max(1, tracks.length), view, plotW), [segs, trackOf, tracks.length, view, plotW]);
+  // What the Flow and Devices views draw: one stream, or one per device side
+  // by side (the first device on top), each with its own pieces.
+  const streams = useMemo<Stream[]>(() => {
+    if (mode !== "devices") return [{ label: "", segs, pieces, h: BAND, dy: 0 }];
+    const n = lanes.length;
+    return lanes.map((l, i) => ({
+      label: l.label,
+      segs: l.segs,
+      pieces: linePieces(l.segs, trackOf, Math.max(1, tracks.length), view, plotW),
+      h: DEVICE_BAND,
+      dy: (i - (n - 1) / 2) * (DEVICE_BAND + 1.5),
+    }));
+  }, [mode, segs, pieces, lanes, trackOf, tracks.length, view, plotW]);
   const ticks = useMemo(() => axisTicks(view, plotW, width < 520 ? 58 : 72), [view, plotW, width]);
 
   // Heights per view.
   const ys = tracks.map((_, i) => TOP + i * TRACK);
-  const yAway = TOP + Math.max(0, tracks.length - 1) * TRACK + AWAY;
-  const deviceLanes = useMemo(() => [{ label: "Merged", segs }, ...lanes], [segs, lanes]);
-  const plotH =
-    mode === "flow" ? yAway + 14 : mode === "blocks" ? 8 + BAR_H + 8 + 8 + 8 : deviceLanes.length * (LANE_H + LANE_GAP) - LANE_GAP + 8;
+  const yLast = TOP + Math.max(0, tracks.length - 1) * TRACK;
+  const plotH = mode === "blocks" ? 8 + BAR_H + 8 + 8 + 8 : yLast + BAND / 2 + 22;
   const height = plotH + AXIS;
 
   // ------------------------------------------------------------ layers
   // Built only when the window, size or data change, so hovering re-renders
   // nothing but the overlay.
   const plot = useMemo(() => {
-    if (mode === "flow") return flowLayer();
     if (mode === "blocks") return blocksLayer();
-    return devicesLayer();
-  }, [mode, pieces, blocks, labels, blockInfo, view, plotW, gutter, tracks, now, segs, deviceLanes]);
+    return flowLayer();
+  }, [mode, streams, blocks, labels, blockInfo, view, plotW, gutter, tracks, now, segs]);
 
   function flowLayer() {
     const joinMs = Math.max(60_000, (2 * span) / plotW);
-    const flats: ReactNode[] = [];
-    const links: ReactNode[] = [];
-    const bends: ReactNode[] = []; // the S-curves again, for the glow under the line
-    const grads: ReactNode[] = [];
-    pieces.forEach((p, k) => {
-      const prev = pieces[k - 1];
-      const next = pieces[k + 1];
-      const x0 = x(p.start);
-      const x1 = x(p.end);
-      const w = x1 - x0;
-      const y = ys[p.track];
-      const touchPrev = prev && p.start - prev.end <= joinMs;
-      const touchNext = next && next.start - p.end <= joinMs;
-      const a = touchPrev ? Math.min(CURVE, w / 2) : 0;
-      const b = touchNext ? Math.min(CURVE, w / 2) : 0;
-      flats.push(<path key={k} d={`M${(x0 + a).toFixed(1)},${y}H${(x1 - b).toFixed(1)}`} style={{ stroke: colors[p.track] }} />);
-      if (!next) return;
-      const nx0 = x(next.start);
-      const ny = ys[next.track];
-      if (touchNext) {
-        const ax = x1 - b;
-        const bx = nx0 + Math.min(CURVE, (x(next.end) - nx0) / 2);
-        const id = `${uid}g${k}`;
-        grads.push(
-          <linearGradient key={id} id={id} gradientUnits="userSpaceOnUse" x1={ax} x2={bx} y1={0} y2={0}>
-            <stop offset="0.15" style={{ stopColor: colors[p.track] }} />
-            <stop offset="0.85" style={{ stopColor: colors[next.track] }} />
-          </linearGradient>,
-        );
-        const d = `M${ax.toFixed(1)},${y}${sCurve(ax, y, bx, ny)}`;
-        links.push(<path key={k} d={d} style={{ stroke: `url(#${id})` }} />);
-        bends.push(<path key={k} d={d} style={{ stroke: `url(#${id})` }} />);
-      } else {
-        links.push(<path key={`g${k}`} className="flow-gap" d={gapPath(x1, y, nx0, ny, next.start - p.end)} />);
-      }
-    });
-    // From the last piece to now: away (or a short pause) since.
-    const last = pieces[pieces.length - 1];
-    let live: ReactNode = null;
-    if (last && now !== undefined && now <= view.end + span * 0.02) {
-      const lx = x(last.end);
-      const ly = ys[last.track];
-      if (now - last.end < 2 * MINUTE) {
-        live = <circle className="flow-live" cx={lx} cy={ly} r={4.5} style={{ fill: colors[last.track] }} />;
-      } else {
-        links.push(<path key="tail" className="flow-gap" d={gapPath(lx, ly, x(now), yAway, now - last.end, true)} />);
-      }
-    }
-
-    // Block labels on brackets over the line, where they fit.
-    const notes: ReactNode[] = [];
+    const defs: ReactNode[] = [];
     const left = gutter;
     const right = gutter + plotW;
-    for (let i = firstEndingAfter(blocks, view.start); i < blocks.length && blocks[i].start < view.end; i++) {
-      const bl = blocks[i];
-      const info = blockInfo.get(bl.id)!;
-      const bx0 = Math.max(left, x(bl.start));
-      const bx1 = Math.min(right, x(bl.end));
-      const w = bx1 - bx0;
-      if (w < 26) continue;
-      const yb = (ys[info.track] ?? TOP) - 14;
-      const label = labels.get(bl.id) ?? bl.label;
-      const text = fitFirst([`${label} · ${fmtDuration(info.active)}`, label], w - 14, LABEL_FONT);
-      notes.push(
-        <g key={bl.id}>
-          <path className="flow-bracket" style={{ stroke: colors[info.track] }}
-            d={`M${bx0 + 1.5},${yb + 5}Q${bx0 + 1.5},${yb} ${bx0 + 6.5},${yb}H${bx1 - 6.5}Q${bx1 - 1.5},${yb} ${bx1 - 1.5},${yb + 5}`} />
-          {text && (
-            <text className="flow-label" x={(bx0 + bx1) / 2} y={yb + 4} textAnchor="middle">
-              {text}
-            </text>
-          )}
-        </g>,
-      );
-      // Zoomed in far enough, the pieces inside get their own names below the line.
-      for (let k = firstEndingAfter(pieces, bl.start); k < pieces.length && pieces[k].start < bl.end; k++) {
-        const p = pieces[k];
-        const px0 = Math.max(left, x(Math.max(p.start, bl.start)));
-        const px1 = Math.min(right, x(Math.min(p.end, bl.end)));
-        if (px1 - px0 < 70) continue;
-        const name = topSubject(segs, p, trackOf);
-        if (!name || name === label) continue;
-        const sub = fitText(name, px1 - px0 - 12, SUB_FONT);
-        if (sub) notes.push(<text key={`${bl.id}-${k}`} className="flow-sub" x={(px0 + px1) / 2} y={ys[p.track] + 17} textAnchor="middle">{sub}</text>);
+
+    // One stream: flat bands on their track, Sankey ribbons between touching
+    // pieces, a faint ribbon across short pauses, and a fade out and back in
+    // around time away.
+    const drawStream = (st: Stream, si: number) => {
+      const { pieces: ps, h, dy } = st;
+      const half = h / 2;
+      const shapes: ReactNode[] = [];
+      const band = (x0: number, x1: number, y: number) => `M${f(x0)},${f(y - half)}H${f(x1)}V${f(y + half)}H${f(x0)}Z`;
+      const ribbon = (ax: number, ay: number, bx: number, by: number) =>
+        `M${f(ax)},${f(ay - half)}${sCurve(ax, ay - half, bx, by - half)}V${f(by + half)}${sCurve(bx, by + half, ax, ay + half)}Z`;
+      const grad = (id: string, x0: number, x1: number, from: string, to: string, o0 = 1, o1 = 1) =>
+        defs.push(
+          <linearGradient key={id} id={id} gradientUnits="userSpaceOnUse" x1={x0} x2={x1} y1={0} y2={0}>
+            <stop offset="0.1" style={{ stopColor: from, stopOpacity: o0 }} />
+            <stop offset="0.9" style={{ stopColor: to, stopOpacity: o1 }} />
+          </linearGradient>,
+        );
+      const fade = (k: string, x0: number, x1: number, y: number, color: string, out: boolean) => {
+        if (x1 - x0 < 1) return;
+        const id = `${uid}s${si}f${k}`;
+        grad(id, x0, x1, color, color, out ? 1 : 0, out ? 0 : 1);
+        shapes.push(<path key={`f${k}`} d={band(x0, x1, y)} style={{ fill: `url(#${id})` }} />);
+      };
+      const gapKind = (a: Piece, b: Piece) => (b.start - a.end <= joinMs ? "touch" : b.start - a.end < AWAY_MS ? "pause" : "away");
+
+      ps.forEach((p, k) => {
+        const prev = ps[k - 1];
+        const next = ps[k + 1];
+        const x0 = x(p.start);
+        const x1 = x(p.end);
+        const w = x1 - x0;
+        const y = ys[p.track] + dy;
+        const color = colors[p.track];
+        const before = prev ? gapKind(prev, p) : "away";
+        const after = next ? gapKind(p, next) : "away";
+        const a = before === "touch" ? Math.min(CURVE, w / 2) : 0;
+        const b = after === "touch" ? Math.min(CURVE, w / 2) : 0;
+        shapes.push(<path key={k} d={band(x0 + a, Math.max(x0 + a + 0.5, x1 - b), y)} style={{ fill: color }} />);
+        if (before === "away") fade(`i${k}`, x0 - Math.min(FADE, prev ? (x0 - x(prev.end)) / 2 : FADE), x0, y, color, false);
+        if (!next) {
+          const isLive = now !== undefined && now - p.end < 2 * MINUTE;
+          if (!isLive) fade(`o${k}`, x1, x1 + FADE, y, color, true);
+          else if (si === 0 && mode === "flow") shapes.push(<circle key="live" className="flow-live" cx={x1} cy={y} r={half * 0.55} />);
+          return;
+        }
+        const nx0 = x(next.start);
+        const ny = ys[next.track] + dy;
+        const ncolor = colors[next.track];
+        if (after === "away") {
+          fade(`o${k}`, x1, x1 + Math.min(FADE, (nx0 - x1) / 2), y, color, true);
+          return;
+        }
+        const ax = x1 - b;
+        const bx = after === "touch" ? nx0 + Math.min(CURVE, (x(next.end) - nx0) / 2) : nx0;
+        const id = `${uid}s${si}g${k}`;
+        grad(id, ax, bx, color, ncolor);
+        shapes.push(<path key={`r${k}`} className={after === "pause" ? "flow-pause" : undefined} d={ribbon(ax, y, bx, ny)} style={{ fill: `url(#${id})` }} />);
+      });
+      return <g key={st.label || "you"} className="flow-stream">{shapes}</g>;
+    };
+    const drawn = streams.map(drawStream);
+
+    // Block labels on brackets over the stream, where they fit (merged only).
+    const notes: ReactNode[] = [];
+    if (mode === "flow") {
+      for (let i = firstEndingAfter(blocks, view.start); i < blocks.length && blocks[i].start < view.end; i++) {
+        const bl = blocks[i];
+        const info = blockInfo.get(bl.id)!;
+        const bx0 = Math.max(left, x(bl.start));
+        const bx1 = Math.min(right, x(bl.end));
+        const w = bx1 - bx0;
+        if (w < 26) continue;
+        const yb = (ys[info.track] ?? TOP) - BAND / 2 - 9;
+        const label = labels.get(bl.id) ?? bl.label;
+        const text = fitFirst([`${label} · ${fmtDuration(info.active)}`, label], w - 14, LABEL_FONT);
+        notes.push(
+          <g key={bl.id}>
+            <path className="flow-bracket" style={{ stroke: colors[info.track] }}
+              d={`M${bx0 + 1.5},${yb + 5}Q${bx0 + 1.5},${yb} ${bx0 + 6.5},${yb}H${bx1 - 6.5}Q${bx1 - 1.5},${yb} ${bx1 - 1.5},${yb + 5}`} />
+            {text && (
+              <text className="flow-label" x={(bx0 + bx1) / 2} y={yb + 4} textAnchor="middle">
+                {text}
+              </text>
+            )}
+          </g>,
+        );
+        // Zoomed in far enough, the pieces inside get their own names below the stream.
+        for (let k = firstEndingAfter(pieces, bl.start); k < pieces.length && pieces[k].start < bl.end; k++) {
+          const p = pieces[k];
+          const px0 = Math.max(left, x(Math.max(p.start, bl.start)));
+          const px1 = Math.min(right, x(Math.min(p.end, bl.end)));
+          if (px1 - px0 < 70) continue;
+          const name = topSubject(segs, p, trackOf);
+          if (!name || name === label) continue;
+          const sub = fitText(name, px1 - px0 - 12, SUB_FONT);
+          if (sub) notes.push(<text key={`${bl.id}-${k}`} className="flow-sub" x={(px0 + px1) / 2} y={ys[p.track] + BAND / 2 + 13} textAnchor="middle">{sub}</text>);
+        }
       }
     }
 
     return (
       <>
-        <defs>{grads}</defs>
+        <defs>{defs}</defs>
         {tracks.map((c, i) => (
           <line key={c.key} className="flow-track" x1={gutter} x2={gutter + plotW} y1={ys[i]} y2={ys[i]} />
         ))}
-        <line className="flow-away" x1={gutter} x2={gutter + plotW} y1={yAway} y2={yAway} />
         <g clipPath={`url(#${uid}clip)`}>
-          <g className="flow-glow">
-            {flats}
-            {bends}
-          </g>
-          <g className="flow-line">
-            {links}
-            {flats}
-          </g>
-          {live}
+          {drawn}
           {notes}
         </g>
       </>
     );
-
-    // A pause, dotted: straight across when short, down to the baseline when long.
-    function gapPath(x0: number, y0: number, x1: number, y1: number, ms: number, end = false): string {
-      const r = Math.min(14, (x1 - x0) / 3);
-      if (ms < AWAY_MS || r < 6) return `M${x0.toFixed(1)},${y0}${sCurve(x0, y0, x1, y1)}`;
-      const out = `M${x0.toFixed(1)},${y0}${sCurve(x0, y0, x0 + 2 * r, yAway)}H${(x1 - (end ? 0 : 2 * r)).toFixed(1)}`;
-      return end ? out : `${out}${sCurve(x1 - 2 * r, yAway, x1, y1)}`;
-    }
   }
 
   function blocksLayer() {
@@ -296,30 +310,6 @@ export function FlowTimeline({ title, segs, lanes, bounds: givenBounds, fit: giv
     );
   }
 
-  function devicesLayer() {
-    return (
-      <>
-        {deviceLanes.map((lane, li) => {
-          const y = li * (LANE_H + LANE_GAP) + 4;
-          const runs = runsIn(lane.segs, view, x, (s) => slotColor(s.cat.slot));
-          return (
-            <g key={lane.label + li}>
-              <text className="lane-label" x={0} y={y + LANE_H / 2 + 4}>{fitText(lane.label, gutter - 8, NAME_FONT) ?? ""}</text>
-              <rect x={gutter} y={y} width={plotW} height={LANE_H} rx={5} fill="var(--idle)" />
-              <g clipPath={`url(#${uid}clip)`}>
-                {runs.map((r, k) => {
-                  const w = r.x1 - r.x0;
-                  const inset = w > 4 ? 1 : 0;
-                  return <rect key={k} x={r.x0 + inset} y={y} width={Math.max(1, w - 2 * inset)} height={LANE_H} rx={w > 8 ? 3 : 0} style={{ fill: r.color }} />;
-                })}
-              </g>
-            </g>
-          );
-        })}
-      </>
-    );
-  }
-
   // ------------------------------------------------------------ hover
   const [hover, setHover] = useState<{ px: number; py: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -333,31 +323,40 @@ export function FlowTimeline({ title, segs, lanes, bounds: givenBounds, fit: giv
     const slack = (span / plotW) * 6;
     const hx = x(t);
     if (mode === "devices") {
-      const li = Math.floor((hover.py - 4) / (LANE_H + LANE_GAP));
-      const lane = deviceLanes[li];
-      const s = lane ? nearestAt(lane.segs, t, slack) : null;
-      if (lane) {
-        tip = {
-          x: hx,
-          y: li * (LANE_H + LANE_GAP) + LANE_H + 10,
-          content: s ? <SegTip s={s} deviceLabel={deviceLabel} /> : <Nothing t={t} />,
-        };
+      // The device stream nearest the pointer.
+      let best: { st: Stream; y: number } | null = null;
+      for (const st of streams) {
+        const p = nearestAt(st.pieces, t, slack);
+        if (!p) continue;
+        const y = ys[p.track] + st.dy;
+        if (!best || Math.abs(hover.py - y) < Math.abs(hover.py - best.y)) best = { st, y };
       }
-      overlay = <line className="hover-line" x1={hx} x2={hx} y1={0} y2={plotH} />;
+      const s = best ? nearestAt(best.st.segs, t, slack) : null;
+      tip = {
+        x: hx,
+        y: Math.min(plotH, (best?.y ?? TOP) + DEVICE_BAND + 10),
+        content: s ? <SegTip s={s} deviceLabel={deviceLabel} /> : <Nothing t={t} />,
+      };
+      overlay = (
+        <>
+          <line className="hover-line" x1={hx} x2={hx} y1={0} y2={plotH} />
+          {best && s && <circle className="flow-dot" cx={hx} cy={best.y} r={3.5} style={{ stroke: colors[trackOf(s)] }} />}
+        </>
+      );
     } else {
       const bl = nearestAt(blocks, t, slack);
       const s = nearestAt(segs, t, slack);
       const p = mode === "flow" ? nearestAt(pieces, t, slack) : null;
-      const hy = p ? ys[p.track] : mode === "flow" ? yAway : 8 + BAR_H;
+      const hy = p ? ys[p.track] : null;
       tip = {
         x: hx,
-        y: mode === "flow" ? Math.min(plotH, hy + 18) : 8 + BAR_H + 22,
+        y: mode === "flow" ? Math.min(plotH, (hy ?? TOP) + BAND / 2 + 12) : 8 + BAR_H + 22,
         content: bl ? <BlockTip block={bl} label={labels.get(bl.id) ?? bl.label} at={s} t={t} /> : <Nothing t={t} />,
       };
       overlay = (
         <>
           <line className="hover-line" x1={hx} x2={hx} y1={0} y2={plotH} />
-          {mode === "flow" && <circle className="flow-dot" cx={hx} cy={hy} r={4} style={{ stroke: p ? colors[p.track] : "var(--muted)" }} />}
+          {mode === "flow" && p && hy !== null && <circle className="flow-dot" cx={hx} cy={hy} r={4} style={{ stroke: colors[p.track] }} />}
           {mode === "blocks" && bl && (
             <rect className="bar-hover" x={Math.max(gutter, x(bl.start)) + 0.5} y={8.5}
               width={Math.max(1, Math.min(gutter + plotW, x(bl.end)) - Math.max(gutter, x(bl.start)) - 1)} height={BAR_H - 1} rx={6.5} />
@@ -529,7 +528,7 @@ export function FlowTimeline({ title, segs, lanes, bounds: givenBounds, fit: giv
           {ticks.list.map((t) => (
             <line key={t} className="gridline" x1={x(t)} x2={x(t)} y1={0} y2={plotH} />
           ))}
-          {mode === "flow" && (
+          {mode !== "blocks" && (
             <g className="flow-names">
               {tracks.map((c, i) => (
                 <g key={c.key}>
@@ -537,7 +536,6 @@ export function FlowTimeline({ title, segs, lanes, bounds: givenBounds, fit: giv
                   <text x={13} y={ys[i] + 4}>{fitText(trackName(c), gutter - 18, NAME_FONT) ?? ""}</text>
                 </g>
               ))}
-              <text className="away" x={13} y={yAway + 4}>Away</text>
             </g>
           )}
           {plot}
@@ -565,14 +563,42 @@ export function FlowTimeline({ title, segs, lanes, bounds: givenBounds, fit: giv
           view={view} set={set} clamp={clamp} gutter={gutter} plotW={plotW} width={width} now={now} />
         <Tooltip tip={tip} width={width} />
       </div>
-      {mode !== "flow" && <Legend tracks={tracks} />}
+      {mode === "blocks" && <Legend tracks={tracks} />}
+      {mode === "devices" && streams.length > 1 && (
+        <div className="legend small muted">
+          {streams.map((st, i) => (
+            <span key={st.label}>{st.label}: {i === 0 ? "upper stream" : i === streams.length - 1 ? "lower stream" : "middle stream"}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 const BAR_H = 44;
-const LANE_H = 26;
-const LANE_GAP = 10;
+
+interface Stream {
+  label: string;
+  segs: CSeg[];
+  pieces: Piece[];
+  h: number; // thickness
+  dy: number; // offset from the track's line
+}
+
+const f = (n: number) => n.toFixed(1);
+
+/** Where a top-level category sits, higher is better: its score when it has
+ *  one, else a guess from its name (work and study high, talking a little
+ *  above the middle, media and games low). Uncategorized time is the middle. */
+export function goodness(c: Category, uncategorized = false): number {
+  if (uncategorized) return -0.5;
+  if (c.score !== null && c.score !== 0) return c.score;
+  const n = c.leaf.toLowerCase();
+  if (/work|school|study|class|code|programming|writing|research|learn/.test(n)) return 10;
+  if (/media|video|game|social|entertain|stream|tv|music|fun|leisure/.test(n)) return -10;
+  if (/comm|chat|email|mail|message|im/.test(n)) return 3;
+  return c.score === 0 ? 0 : 1;
+}
 
 // ------------------------------------------------------------------ viewport
 
