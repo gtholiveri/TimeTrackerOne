@@ -1,17 +1,17 @@
 // The glance view: what each device is doing now, today's total and how it
-// splits, and the day as a strip (merged, or one lane per device).
+// splits, and the day as a zoomable line (see FlowTimeline).
 
 import { useMemo, useState } from "react";
 import type { Device, Seg } from "../lib/activity";
-import { Timeline, visibleRange } from "../components/Timeline";
-import { sumBy, type CSeg } from "../lib/aggregate";
+import { FlowTimeline } from "../components/FlowTimeline";
+import { visibleRange } from "../components/Timeline";
+import { sumBy } from "../lib/aggregate";
 import type { AWEvent, TTState } from "../lib/api";
 import { choose, isBackground } from "../lib/attention";
 import { useActivity, useApp, useDerived, useLiveState, useNow, type Lane } from "../lib/store";
 import { MINUTE, addDays, dayStart, fmtAgo, fmtDay, fmtDuration, fmtTime } from "../lib/time";
 import { CategoryBars, RatingSplit, ratingTotals } from "../components/Figures";
 import { slotColor } from "../lib/palette";
-import { usePref } from "../components/usePref";
 
 export function Today() {
   const { cats, attention, dayOffset, devices } = useApp();
@@ -26,10 +26,10 @@ export function Today() {
   const act = useActivity(range);
   const derived = useDerived(act.lanes, cats, attention);
   const live = useLiveState();
-  const [mode, setMode] = usePref<"merged" | "lanes">("today.mode", "merged");
   const label = (host: string) => devices.find((d) => d.host === host)?.label ?? host;
 
   const merged = derived?.merged ?? [];
+  const deviceLanes = useMemo(() => derived?.lanes.map((l) => ({ label: l.device.label, segs: l.segs })) ?? [], [derived]);
   const total = merged.reduce((a, s) => a + (s.end - s.start) / 1000, 0);
   const byDevice = [...sumBy(merged, (s) => s.host)].sort((a, b) => b[1] - a[1]);
 
@@ -72,54 +72,22 @@ export function Today() {
       </div>
 
       <div className="card">
-        <div className="card-head">
-          <h2>{isToday ? "Today" : "The day"}</h2>
-          <span className="spacer" />
-          <div className="seg-control" role="group" aria-label="Timeline layout">
-            <button aria-pressed={mode === "merged"} onClick={() => setMode("merged")}>Merged</button>
-            <button aria-pressed={mode === "lanes"} onClick={() => setMode("lanes")}>By device</button>
-          </div>
-        </div>
         {derived ? (
-          <>
-            <Timeline
-              range={visibleRange(range, derived.lanes.flatMap((l) => l.segs), isToday ? now : null)}
-              now={isToday ? now : undefined}
-              lanes={
-                mode === "merged"
-                  ? [{ label: "You", segs: derived.merged }]
-                  : derived.lanes.map((l) => ({ label: l.device.label, segs: l.segs }))
-              }
-              laneHeight={mode === "merged" ? 34 : 26}
-              deviceLabel={label}
-            />
-            <TimelineLegend segs={mode === "merged" ? derived.merged : derived.lanes.flatMap((l) => l.segs)} />
-          </>
+          <FlowTimeline
+            title={isToday ? "Today" : "The day"}
+            range={visibleRange(range, derived.lanes.flatMap((l) => l.segs), isToday ? now : null)}
+            now={isToday ? now : undefined}
+            segs={derived.merged}
+            lanes={deviceLanes}
+            deviceLabel={label}
+          />
         ) : (
-          <div className="empty">Loading…</div>
+          <>
+            <h2>{isToday ? "Today" : "The day"}</h2>
+            <div className="empty">Loading…</div>
+          </>
         )}
       </div>
-    </div>
-  );
-}
-
-function TimelineLegend({ segs }: { segs: CSeg[] }) {
-  const { cats } = useApp();
-  const roots = new Map<string, number>();
-  for (const s of segs) {
-    const r = cats.root(s.cat);
-    roots.set(r.key, (roots.get(r.key) ?? 0) + (s.end - s.start));
-  }
-  const shown = cats.list.filter((c) => c.depth === 0 && roots.has(c.key));
-  if (!shown.length) return null;
-  return (
-    <div className="legend">
-      {shown.map((c) => (
-        <span key={c.key}>
-          <span className="swatch" style={{ background: slotColor(c.slot) }} />
-          {c.key}
-        </span>
-      ))}
     </div>
   );
 }
