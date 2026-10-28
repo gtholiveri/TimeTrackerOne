@@ -8,8 +8,9 @@ that keeps growing keeps its label instead of asking the model every refresh.
 Uncached blocks go to the model in batches, one call per BATCH blocks.
 
 Providers are tried in order: the keyed ones whose key is set (free tiers,
-OpenAI-compatible chat endpoints), then the keyless ones unless
-TT_LLM_KEYLESS=0. A provider that fails, times out, rate-limits or answers
+OpenAI-compatible chat endpoints), then the keyless ones only if
+TT_LLM_KEYLESS=1: they take block titles with no account, so who keeps them
+is unknown. A provider that fails, times out, rate-limits or answers
 garbage is skipped for the blocks it didn't label. A block nobody labels is
 left out of the answer, and the dashboard keeps its own heuristic label.
 """
@@ -86,7 +87,7 @@ def providers(env=os.environ) -> list[Provider]:
         return env.get(f"TT_LLM_{name.upper()}_MODEL") or default
 
     out = [Provider(n, url, model(n, m), env[k]) for n, url, m, k in KEYED if env.get(k)]
-    if env.get("TT_LLM_KEYLESS", "1") != "0":
+    if env.get("TT_LLM_KEYLESS", "0") == "1":
         out += [Provider(n, url, model(n, m), env.get(k) if k else None) for n, url, m, k in KEYLESS]
     return out
 

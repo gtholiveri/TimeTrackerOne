@@ -189,14 +189,17 @@ class Labeling(unittest.TestCase):
 
 class Chain(unittest.TestCase):
     def test_keyed_first_then_keyless(self):
-        chain = labels.providers({"TT_LLM_GEMINI_KEY": "g", "TT_LLM_GROQ_KEY": "q", "TT_LLM_GROQ_MODEL": "m"})
+        chain = labels.providers({"TT_LLM_GEMINI_KEY": "g", "TT_LLM_GROQ_KEY": "q", "TT_LLM_GROQ_MODEL": "m",
+                                  "TT_LLM_KEYLESS": "1"})
         self.assertEqual([p.name for p in chain][:2], ["groq", "gemini"])
         self.assertEqual((chain[0].model, chain[0].key), ("m", "q"))
         self.assertTrue(all(p.key is None for p in chain[2:]))
         self.assertGreater(len(chain), 2)
 
-    def test_keyless_can_be_turned_off(self):
-        self.assertEqual(labels.providers({"TT_LLM_KEYLESS": "0"}), [])
+    def test_keyless_only_when_asked(self):
+        self.assertEqual(labels.providers({}), [])
+        self.assertEqual([p.name for p in labels.providers({"TT_LLM_GEMINI_KEY": "g"})], ["gemini"])
+        self.assertTrue(labels.providers({"TT_LLM_KEYLESS": "1"}))
 
 
 class Route(unittest.TestCase):

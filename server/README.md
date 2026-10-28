@@ -206,7 +206,7 @@ running on 5600, leave out `TT_AW_COMMAND`.
 | `TT_LLM_GROQ_KEY`, `TT_LLM_CEREBRAS_KEY`, `TT_LLM_GEMINI_KEY`, `TT_LLM_MISTRAL_KEY`, `TT_LLM_OPENROUTER_KEY` | | Free-tier keys for block labels, tried in this order. |
 | `TT_LLM_<NAME>_MODEL` | (below) | A different model for that provider (`GROQ`, `LLM7`, ...). |
 | `TT_LLM_LLM7_KEY` | | Optional free LLM7 token, for higher limits. |
-| `TT_LLM_KEYLESS` | `1` | `0` keeps block titles away from the keyless services. |
+| `TT_LLM_KEYLESS` | `0` | `1` also sends block titles to the keyless services. |
 
 ## Block labels
 
@@ -234,18 +234,18 @@ limits as of October 2026.
 | Google Gemini | `gemini-2.5-flash-lite` | `TT_LLM_GEMINI_KEY` ([aistudio.google.com](https://aistudio.google.com/app/apikey)) | per-account quotas in AI Studio | Reliable. Free-tier prompts may be used by Google. |
 | Mistral | `ministral-8b-latest` | `TT_LLM_MISTRAL_KEY` ([console.mistral.ai](https://console.mistral.ai/api-keys)) | about 1 req/s | Free mode may train on prompts unless you opt out. |
 | OpenRouter | `openrouter/free` | `TT_LLM_OPENROUTER_KEY` ([openrouter.ai/keys](https://openrouter.ai/keys)) | 20 req/min, 50/day | Routes to whichever free model is up. |
-| LLM7.io | `gpt-oss:20b` | none (optional `TT_LLM_LLM7_KEY`) | with a free token 60 req/min, 250/hour | No sign-up, so labels work out of the box. |
+| LLM7.io | `gpt-oss:20b` | none (optional `TT_LLM_LLM7_KEY`) | with a free token 60 req/min, 250/hour | No sign-up. |
 | Kilo Code | `kilo-auto/free` | none | 200 req/hour per IP | No sign-up; may route to providers that log prompts. |
 | OVHcloud AI Endpoints | `gpt-oss-20b` | none | 2 req/min per IP and model | No sign-up, EU-hosted; last resort. |
 
-The keyless ones are on unless `TT_LLM_KEYLESS=0`, and they and most free
-tiers may log or train on what they're sent: window titles and site names.
-With a key set, Groq answers first and the keyless ones only cover for it.
-On Fly:
+The keyless ones are off unless `TT_LLM_KEYLESS=1`: nobody signs up, so it's
+unknown who keeps the window titles and site names they're sent. Most free
+tiers may also log or train on prompts. With no key and no keyless providers,
+the dashboard's own labels are used. On Fly (Gabe's relay uses Gemini):
 
 ```sh
 fly secrets set TT_LLM_GROQ_KEY=... TT_LLM_GEMINI_KEY=...   # any of them, all optional
-fly secrets set TT_LLM_KEYLESS=0                            # titles only to the keyed providers
+fly secrets set TT_LLM_KEYLESS=1                            # also the no-sign-up services
 ```
 
 The relay prints the chain it will use when it starts.
