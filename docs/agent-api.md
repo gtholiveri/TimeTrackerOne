@@ -252,6 +252,12 @@ Questions worth asking of the data:
 
 ## Caveats
 
+- **Current state (November 2026): phone time is undercounted.** The phone
+  side still runs on Shortcuts that sync over the network, many of those runs
+  fail, and the 2-second polling loop isn't running. Treat phone totals as a
+  floor, and phone gaps as possibly missing data rather than time off the
+  phone, until this note is removed.
+
 - **Gaps**: the laptop is only tracked while it's on and ActivityWatch is
   running; its data reaches the relay within a minute or two, and after time
   offline it catches up when it's back. The phone's data reaches the relay
