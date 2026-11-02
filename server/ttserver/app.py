@@ -3,7 +3,10 @@ up to date. Also serves the ActivityWatch web UI behind the same key.
 
 Endpoints (KEY is TT_KEY; pass it as ?key=, a bearer token, or the password
 of HTTP basic auth). TT_INGEST_KEY, if set, works for the two POST endpoints
-only, so the key stored on the phone can't read anything back:
+only, so the key stored on the phone can't read anything back. TT_READ_KEY, if
+set, reads and changes nothing: the GET endpoints below and ActivityWatch's
+read API (GET /api/0/..., POST /api/0/query/). It's the key to give an agent
+that analyzes the data:
 
     POST /tt/ingest?key=KEY&file=NAME&lines=N&mode=tail|full&dev=DEVICE
         Body: raw tt|... lines from one of the phone's log files. With
@@ -16,6 +19,10 @@ only, so the key stored on the phone can't read anything back:
         The fused timeline per device, newest last, with the live state.
     GET  /tt/lines?key=KEY&source=ios|safari[&hours=24]
         The raw lines received, oldest first, for debugging.
+    GET  /tt/activity?key=KEY[&days=1|&start=..&end=..][&view=attention|devices][&format=csv][&tz=..]
+        Categorized activity segments, the dashboard's pipeline (activity.py).
+    GET  /tt/summary?key=KEY[&days=7|&start=..&end=..][&tz=..]
+        Per-day totals of the same: categories, ratings, apps, sites, unlocks.
     POST /tt/labels?key=KEY
         Body: {"blocks": [{"id", "items": [{"subject", "app", "title", "seconds",
         "category"}]}]}. Answers {"labels": {id: label}, "model": ...}, labels
@@ -43,7 +50,7 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import awsync
+from . import activity, awsync
 from .fusion import fuse
 from .labels import Labeler
 from .lines import parse_line, to_record
@@ -161,7 +168,7 @@ def _iv(iv) -> dict:
 
 
 def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, ingest_key: str | None = None,
-                 dashboard: str = DASHBOARD, labeler: Labeler | None = None):
+                 dashboard: str = DASHBOARD, labeler: Labeler | None = None, read_key: str | None = None):
     aw = urllib.parse.urlsplit(aw_url)
     dashboard_root = os.path.realpath(dashboard)
 
@@ -180,8 +187,9 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
         def query(self) -> dict[str, str]:
             return {k: v[-1] for k, v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
 
-        def authorized(self, ingest: bool = False) -> bool:
-            """The full key opens everything; the ingest key (if set) only the upload endpoints."""
+        def authorized(self, ingest: bool = False, read: bool = False) -> bool:
+            """The full key opens everything; the ingest key (if set) only the upload
+            endpoints; the read key (if set) only what reads and changes nothing."""
             supplied = self.query().get("key")
             auth = self.headers.get("Authorization", "")
             if auth.startswith("Bearer "):
@@ -193,7 +201,7 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                     pass
             if not supplied:
                 return False
-            keys = [key] + ([ingest_key] if ingest and ingest_key else [])
+            keys = [key] + ([ingest_key] if ingest and ingest_key else []) + ([read_key] if read and read_key else [])
             return any(hmac.compare_digest(supplied.encode(), k.encode()) for k in keys)
 
         def body(self) -> bytes:
@@ -251,11 +259,25 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                 return self.send(200, {"ok": relay.last_error is None, "error": relay.last_error,
                                        "last_sync": relay.last_sync})
             if path == "/tt/state":
-                if not self.authorized():
+                if not self.authorized(read=True):
                     return self.challenge()
                 return self.send(200, state_json(relay, float(self.query().get("hours", 6))))
+            if path in ("/tt/activity", "/tt/summary"):
+                if not self.authorized(read=True):
+                    return self.challenge()
+                if relay.aw is None:
+                    return self.send(503, "no ActivityWatch\n")
+                try:
+                    if path == "/tt/activity":
+                        ctype, body = activity.activity(relay.aw, self.query())
+                        return self.send(200, body, ctype)
+                    return self.send(200, activity.summary(relay.aw, self.query()))
+                except ValueError as e:
+                    return self.send(400, f"{e}\n")
+                except Exception as e:
+                    return self.send(502, f"{type(e).__name__}: {e}\n")
             if path == "/tt/lines":
-                if not self.authorized():
+                if not self.authorized(read=True):
                     return self.challenge()
                 q = self.query()
                 since = datetime.now(timezone.utc) - timedelta(hours=float(q.get("hours", 24)))
@@ -300,7 +322,10 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
             self.proxy()
 
         def proxy(self):
-            if not self.authorized():
+            path = urllib.parse.urlsplit(self.path).path
+            reading = path.startswith("/api/0/") and (self.command in ("GET", "HEAD") or (
+                self.command == "POST" and path.rstrip("/") == "/api/0/query"))
+            if not self.authorized(read=reading):
                 return self.challenge()
             # ActivityWatch refuses any browser Origin but its own address, so the
             # web UI's queries and settings fail through here. The relay checks it
@@ -411,10 +436,13 @@ def main(argv=None) -> None:
     ingest_key = os.environ.get("TT_INGEST_KEY") or None
     if ingest_key and len(ingest_key) < 16:
         sys.exit("TT_INGEST_KEY must be at least 16 characters.")
+    read_key = os.environ.get("TT_READ_KEY") or None
+    if read_key and len(read_key) < 16:
+        sys.exit("TT_READ_KEY must be at least 16 characters.")
     dashboard = os.environ.get("TT_DASHBOARD") or DASHBOARD
     labeler = Labeler(os.path.join(data, "labels.db"), log=log)
     server = ThreadingHTTPServer((host, port), make_handler(relay, key, aw_url, aw_api_key, ingest_key, dashboard,
-                                                            labeler))
+                                                            labeler, read_key))
     log(f"tt-relay listening on {host}:{port}, ActivityWatch at {aw_url}, data in {data}")
     log("block labels from:", ", ".join(f"{p.name}/{p.model}" for p in labeler.chain) or "nobody (none configured)")
     try:

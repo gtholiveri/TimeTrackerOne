@@ -18,6 +18,8 @@ Claude Code session can do most of it.
 - [`safari-extension/`](safari-extension) and [`ios/`](ios): TT Safari and the
   app that carries it.
 
+- [`docs/agent-api.md`](docs/agent-api.md): reading the data with a read-only
+  key (`TT_READ_KEY`), for an AI assistant doing analysis.
 - [`docs/empirical-tests.md`](docs/empirical-tests.md): the tests to run on the
   phone, what each one decides, and how to set them up.
 - [`test-harness/`](test-harness): webhook receiver, log analyzer, Safari probe

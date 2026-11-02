@@ -30,7 +30,11 @@ you / an agent   ◀──────────── /tt/state   ┘
 password of HTTP basic auth (any user name). If you also set `TT_INGEST_KEY`,
 that key works for the two upload endpoints and nothing else. Put it on the
 phone (TT Sync and TT Safari), so a key copied from there can't read your
-history.
+history. If you set `TT_READ_KEY`, that key reads and changes nothing: the
+`GET /tt/...` endpoints below and ActivityWatch's read API (`GET /api/0/...`
+and `POST /api/0/query/`), but not the web UI, the dashboard, settings or
+labels. Give it to an AI assistant that analyzes the data; its guide is
+[`docs/agent-api.md`](../docs/agent-api.md).
 
 | | |
 | --- | --- |
@@ -38,6 +42,8 @@ history.
 | `POST /tt/safari?key=KEY` | The Safari extension's records (a JSON array, or one JSON object per line). |
 | `GET /tt/state?key=KEY&hours=6` | The fused timeline per device, with the current state. This is the live feed. |
 | `GET /tt/lines?key=KEY&source=ios\|safari&hours=24` | The raw lines, for debugging. |
+| `GET /tt/activity?key=KEY&days=1&view=attention\|devices&format=json\|csv` | Categorized activity segments (or `start`/`end`, `tz`, `min_seconds`), computed the way the dashboard does it (`ttserver/activity.py`). At most 14 days. |
+| `GET /tt/summary?key=KEY&days=7` | Per-day totals of the same: attention, ratings, categories, apps, sites, phone unlocks, first and last activity. |
 | `POST /tt/labels?key=KEY` | Short labels for the dashboard's timeline blocks, from a free LLM API (below). Body `{"blocks": [{"id", "items": [{"subject", "app", "title", "seconds", "category"}]}]}`, answer `{"labels": {id: label}, "model": ...}`. `TT_KEY` only. |
 | `GET /tt/health` | No key needed. |
 | `GET /app/` | The dashboard (below), behind basic auth. |
@@ -197,6 +203,7 @@ running on 5600, leave out `TT_AW_COMMAND`.
 | --- | --- | --- |
 | `TT_KEY` | (required) | At least 16 characters. Opens everything. |
 | `TT_INGEST_KEY` | | Optional, at least 16 characters. Upload endpoints only. |
+| `TT_READ_KEY` | | Optional, at least 16 characters. Reads only (for an analysis agent). |
 | `TT_DATA` | `data` | Folder for `tt.db` (the raw lines). |
 | `PORT` | `8080` | |
 | `TT_AW_URL` | `http://127.0.0.1:5600` | ActivityWatch's server. |
