@@ -30,11 +30,24 @@ you / an agent   ◀──────────── /tt/state   ┘
 password of HTTP basic auth (any user name). If you also set `TT_INGEST_KEY`,
 that key works for the two upload endpoints and nothing else. Put it on the
 phone (TT Sync and TT Safari), so a key copied from there can't read your
-history. If you set `TT_READ_KEY`, that key reads and changes nothing: the
-`GET /tt/...` endpoints below and ActivityWatch's read API (`GET /api/0/...`
-and `POST /api/0/query/`), but not the web UI, the dashboard, settings or
-labels. Give it to an AI assistant that analyzes the data; its guide is
-[`docs/agent-api.md`](../docs/agent-api.md).
+history.
+
+**Read keys, one per agent.** `TT_READ_KEYS` holds named keys that read and
+change nothing, as `name:key` pairs separated by commas
+(`muse:3f9c...,hermes:a71b...`). They open the `GET /tt/...` endpoints below
+and ActivityWatch's read API (`GET /api/0/...` and `POST /api/0/query/`), but
+not the web UI, the dashboard, settings, labels or uploads. Give each AI
+assistant its own; the log names the agent behind each request, and taking a
+pair out of the list (then `fly deploy` or a restart, which `fly secrets set`
+does) revokes that agent alone. The guide to hand an agent is
+[`docs/agent-api.md`](../docs/agent-api.md). To add one on Fly, keep the
+existing pairs (Fly won't show them; they're in `tt-relay-keys.txt`):
+
+```powershell
+$b = New-Object byte[] 24; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+$k = -join ($b | % { $_.ToString('x2') })
+fly secrets set "TT_READ_KEYS=muse:<existing>,hermes:$k"
+```
 
 | | |
 | --- | --- |
@@ -203,7 +216,7 @@ running on 5600, leave out `TT_AW_COMMAND`.
 | --- | --- | --- |
 | `TT_KEY` | (required) | At least 16 characters. Opens everything. |
 | `TT_INGEST_KEY` | | Optional, at least 16 characters. Upload endpoints only. |
-| `TT_READ_KEY` | | Optional, at least 16 characters. Reads only (for an analysis agent). |
+| `TT_READ_KEYS` | | Optional. `name:key,name:key`, keys at least 16 characters. Read only, one per agent. |
 | `TT_DATA` | `data` | Folder for `tt.db` (the raw lines). |
 | `PORT` | `8080` | |
 | `TT_AW_URL` | `http://127.0.0.1:5600` | ActivityWatch's server. |

@@ -37,7 +37,9 @@ Send the key with every request, in any of these ways:
 | Basic auth password (any user name) | `curl -u muse:KEY ...` |
 
 If your tools can only open URLs, use `?key=KEY`. Wrong or missing key: HTTP
-401. Treat the key as a password: don't print it in shared output.
+401. The key is yours alone (each assistant gets its own, and requests are
+logged by which key made them). Treat it as a password: don't print it in
+shared output.
 
 ## Start here: the two analysis endpoints
 

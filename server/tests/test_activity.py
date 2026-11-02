@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ttserver import activity  # noqa: E402
-from ttserver.app import Relay, make_handler  # noqa: E402
+from ttserver.app import Relay, make_handler, parse_read_keys  # noqa: E402
 from ttserver.store import Store  # noqa: E402
 
 UTC = timezone.utc
@@ -129,11 +129,13 @@ class Pipeline(unittest.TestCase):
 class ReadKey(unittest.TestCase):
     FULL = "full-key-0123456789abcdef"
     READ = "read-key-0123456789abcdef"
+    OTHER = "other-key-0123456789abcdef"
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         relay = Relay(Store(str(Path(self.tmp.name) / "tt.db")), None)
-        handler = make_handler(relay, self.FULL, "http://127.0.0.1:9", None, read_key=self.READ)
+        handler = make_handler(relay, self.FULL, "http://127.0.0.1:9", None,
+                               read_keys={"muse": self.READ, "hermes": self.OTHER})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
@@ -163,6 +165,16 @@ class ReadKey(unittest.TestCase):
             self.assertEqual(self.call(method, path, self.READ, b"{}"), 401, (method, path))
         self.assertEqual(self.call("POST", "/tt/ingest", self.READ, b""), 401)
         self.assertEqual(self.call("DELETE", "/api/0/buckets/x", self.FULL), 502)
+        self.assertEqual(self.call("GET", "/tt/state", self.OTHER), 200)
+        self.assertEqual(self.call("GET", "/tt/state", "not-a-key-0123456789"), 401)
+
+    def test_parse_read_keys(self):
+        self.assertEqual(parse_read_keys(" muse:abcdefabcdefabcdef , hermes:0123456789abcdef0 "),
+                         {"muse": "abcdefabcdefabcdef", "hermes": "0123456789abcdef0"})
+        self.assertEqual(parse_read_keys(""), {})
+        for bad in ["muse", "muse:short", "a b:abcdefabcdefabcdef", "m:abcdefabcdefabcdef,m:abcdefabcdefabcdeg"]:
+            with self.assertRaises(ValueError):
+                parse_read_keys(bad)
 
 
 if __name__ == "__main__":

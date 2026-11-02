@@ -3,10 +3,11 @@ up to date. Also serves the ActivityWatch web UI behind the same key.
 
 Endpoints (KEY is TT_KEY; pass it as ?key=, a bearer token, or the password
 of HTTP basic auth). TT_INGEST_KEY, if set, works for the two POST endpoints
-only, so the key stored on the phone can't read anything back. TT_READ_KEY, if
-set, reads and changes nothing: the GET endpoints below and ActivityWatch's
-read API (GET /api/0/..., POST /api/0/query/). It's the key to give an agent
-that analyzes the data:
+only, so the key stored on the phone can't read anything back. Read keys
+(TT_READ_KEYS="muse:KEY1,hermes:KEY2", one per agent) read and change
+nothing: the GET endpoints below and ActivityWatch's read API (GET /api/0/...,
+POST /api/0/query/). Each is logged by its name; dropping one from the list
+revokes it alone:
 
     POST /tt/ingest?key=KEY&file=NAME&lines=N&mode=tail|full&dev=DEVICE
         Body: raw tt|... lines from one of the phone's log files. With
@@ -168,7 +169,8 @@ def _iv(iv) -> dict:
 
 
 def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, ingest_key: str | None = None,
-                 dashboard: str = DASHBOARD, labeler: Labeler | None = None, read_key: str | None = None):
+                 dashboard: str = DASHBOARD, labeler: Labeler | None = None,
+                 read_keys: dict[str, str] | None = None):
     aw = urllib.parse.urlsplit(aw_url)
     dashboard_root = os.path.realpath(dashboard)
 
@@ -179,8 +181,10 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
         def log_message(self, fmt, *args):
             if not getattr(self, "path", "").startswith("/tt/health"):
                 headers = getattr(self, "headers", None) or {}
-                log(headers.get("Fly-Client-IP") or headers.get("X-Forwarded-For") or self.address_string(),
-                    re.sub(r"key=[^&\s\"]*", "key=…", fmt % args))
+                who = headers.get("Fly-Client-IP") or headers.get("X-Forwarded-For") or self.address_string()
+                if getattr(self, "agent", None):
+                    who += f" [{self.agent}]"
+                log(who, re.sub(r"key=[^&\s\"]*", "key=…", fmt % args))
 
         # ------------------------------------------------------------ helpers
 
@@ -199,10 +203,17 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                     supplied = base64.b64decode(auth[6:]).decode().partition(":")[2]
                 except Exception:
                     pass
+            self.agent = None
             if not supplied:
                 return False
-            keys = [key] + ([ingest_key] if ingest and ingest_key else []) + ([read_key] if read and read_key else [])
-            return any(hmac.compare_digest(supplied.encode(), k.encode()) for k in keys)
+            keys = [key] + ([ingest_key] if ingest and ingest_key else [])
+            if any(hmac.compare_digest(supplied.encode(), k.encode()) for k in keys):
+                return True
+            for name, k in (read_keys or {}).items():
+                if hmac.compare_digest(supplied.encode(), k.encode()):
+                    self.agent = name  # shown in the log, even when refused
+                    return read
+            return False
 
         def body(self) -> bytes:
             n = int(self.headers.get("Content-Length") or 0)
@@ -405,6 +416,21 @@ def ingest_safari(relay: Relay, q: dict[str, str], body: str) -> dict:
     return {"ok": True, "received": len(records), "new": new}
 
 
+def parse_read_keys(value: str) -> dict[str, str]:
+    """TT_READ_KEYS: "name:key,name:key", one read-only key per agent."""
+    out: dict[str, str] = {}
+    for item in filter(None, (x.strip() for x in value.split(","))):
+        name, sep, k = item.partition(":")
+        name, k = name.strip(), k.strip()
+        if not sep or not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or len(k) < 16:
+            raise ValueError("TT_READ_KEYS is name:key pairs separated by commas; names are letters, digits, "
+                             "-_. and keys at least 16 characters.")
+        if name in out:
+            raise ValueError(f"TT_READ_KEYS names {name!r} twice.")
+        out[name] = k
+    return out
+
+
 def supervise(command: str) -> None:
     """Run ActivityWatch's server and restart it if it exits."""
     delay = 1
@@ -436,13 +462,14 @@ def main(argv=None) -> None:
     ingest_key = os.environ.get("TT_INGEST_KEY") or None
     if ingest_key and len(ingest_key) < 16:
         sys.exit("TT_INGEST_KEY must be at least 16 characters.")
-    read_key = os.environ.get("TT_READ_KEY") or None
-    if read_key and len(read_key) < 16:
-        sys.exit("TT_READ_KEY must be at least 16 characters.")
+    try:
+        read_keys = parse_read_keys(os.environ.get("TT_READ_KEYS", ""))
+    except ValueError as e:
+        sys.exit(str(e))
     dashboard = os.environ.get("TT_DASHBOARD") or DASHBOARD
     labeler = Labeler(os.path.join(data, "labels.db"), log=log)
     server = ThreadingHTTPServer((host, port), make_handler(relay, key, aw_url, aw_api_key, ingest_key, dashboard,
-                                                            labeler, read_key))
+                                                            labeler, read_keys))
     log(f"tt-relay listening on {host}:{port}, ActivityWatch at {aw_url}, data in {data}")
     log("block labels from:", ", ".join(f"{p.name}/{p.model}" for p in labeler.chain) or "nobody (none configured)")
     try:
