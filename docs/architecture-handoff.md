@@ -77,8 +77,8 @@ key come from an import question, answered when the shortcut is added.
 These are key=value pairs, not JSON, because Cherri reads `{...}` in strings as
 variables.
 
-**TT Safari** (`safari-extension/`) ships inside the sideloaded TimeTracker app
-(`ios/`). Each page's content script reports:
+**TT Safari** (`safari-extension/`) ships inside the TimeTracker app
+(`ios/`), installed through TestFlight (`ios/README.md`). Each page's content script reports:
 - visible and hidden;
 - URL changes (single-page apps included);
 - title changes;
@@ -164,7 +164,7 @@ to be refined (duration-based ones, say) as real days show where they're wrong.
 | Workflow | What it does |
 | --- | --- |
 | `shortcuts.yml` | Compiles the Cherri sources and signs them through RoutineHub's HubSign service (iOS only imports signed shortcuts). Publishes them on the `shortcuts` pre-release, so each one is a one-tap install link. |
-| `ios-app.yml` | Builds the unsigned TimeTracker app on a macOS runner with XcodeGen. Publishes `TimeTracker-unsigned.ipa` on the `ios-app` pre-release, for Sideloadly. |
+| `ios-app.yml` | Builds the unsigned TimeTracker app on a macOS runner with XcodeGen. Publishes `TimeTracker-unsigned.ipa` on the `ios-app` pre-release. Now only a compile check: signed TestFlight builds come from a nomac cloud Mac (`ios/README.md`). |
 | `server.yml` | Unit tests, end-to-end tests against the released aw-server-rust, the dashboard's tests, and a Docker build (dashboard included) and smoke test. |
 
 ## Why it's built this way
@@ -245,7 +245,9 @@ written), and the dashboard.
 - **Home Screen vs. locked** is a guess wherever the watcher has no data.
 - **iPad.** iCloud Drive > Shortcuts is shared across devices on one Apple ID,
   so an iPad would need its own file names.
-- **The sideloaded app expires** after 7 days with a free Apple ID.
+- **The iOS app needs a paid Apple Developer team** on a separate adult
+  Apple ID (the phone's is set as under 18 for Screen Time). Until that
+  exists, TT Safari isn't installed. TestFlight builds last 90 days.
 - **Permission prompts.** "Always Allow" mostly sticks, but some prompts come
   back at odd moments. It settled down after the first approvals.
 

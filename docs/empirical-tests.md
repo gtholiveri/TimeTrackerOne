@@ -151,38 +151,11 @@ unless they carry an offset.
 ### 4. The iOS app (TT Safari, and the T12 lock probe)
 
 The TimeTracker app carries the **TT Safari** extension (`safari-extension/`)
-and the lock-probe Shortcuts action for T12. GitHub Actions builds it on a
-macOS runner, so you don't need a Mac. The project is defined in
-`ios/project.yml`; the workflow is `.github/workflows/ios-app.yml`.
-
-**Get the build:** download
-[TimeTracker-unsigned.ipa](https://github.com/gtholiveri/TimeTrackerOne/releases/download/ios-app/TimeTracker-unsigned.ipa)
-from the `ios-app` pre-release, which every push to `main` that touches the
-app updates. Nothing secret is baked in: the relay URL and key
-are entered in the extension's popup on the phone.
-
-**Install it from Windows with [Sideloadly](https://sideloadly.io)**, which
-signs the app with your Apple ID (a free one works):
-
-1. Install Sideloadly, plus the non-Microsoft-Store versions of iTunes and
-   iCloud, which it needs for the USB connection.
-2. Plug in the iPhone, drop `TimeTracker-unsigned.ipa` into Sideloadly, enter
-   your Apple ID, and start.
-3. On the iPhone, turn on Settings → Privacy & Security → **Developer Mode**
-   (it restarts the phone). Then trust your Apple ID under Settings → General →
-   VPN & Device Management.
-4. Open TimeTracker once while unlocked. That creates the lock probe's canary
-   file.
-5. Enable the extension: Settings → Apps → Safari → Extensions → **TT Safari**
-   → on, **All Websites: Allow**.
-6. In Safari, tap the extensions button in the address bar → TT Safari, paste
-   the relay URL TT Sync uses (`https://<relay>/tt/ingest?key=...`), and tap
-   Save. The popup shows how many records are waiting and when the last upload
-   worked.
-
-With a free Apple ID the app stops launching after 7 days; sideload it again to
-renew. If the Safari extension doesn't appear after sideloading, the
-extension most likely wasn't signed; check Sideloadly's log for the `.appex`.
+and the lock-probe Shortcuts action for T12. It's built and signed on a nomac
+cloud Mac and installed through TestFlight; `ios/README.md` has the
+requirements, the build steps, and the setup on the phone after installing.
+Nothing secret is baked in: the relay URL and key are entered in the
+extension's popup on the phone.
 
 The old Safari probe (`test-harness/safari-probe/`, posting to the local
 receiver) is no longer built: TT Safari sends the same signals to the relay,

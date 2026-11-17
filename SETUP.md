@@ -122,28 +122,10 @@ himself or through a notes app synced to the phone. Show him the line.
 
 ## 6. The iOS app with TT Safari
 
-1. Download the app to Downloads:
-   ```powershell
-   curl.exe -L -o "$env:USERPROFILE\Downloads\TimeTracker-unsigned.ipa" https://github.com/gtholiveri/TimeTrackerOne/releases/download/ios-app/TimeTracker-unsigned.ipa
-   ```
-2. Check what's installed:
-   - Sideloadly, from sideloadly.io.
-   - iTunes and iCloud, which Sideloadly needs, as the versions from Apple's
-     website, not the Microsoft Store.
-
-   Download whatever is missing and start the installers.
-3. **(Gabe)**:
-   1. Plug in the iPhone and tap Trust on it.
-   2. Drag the `.ipa` into Sideloadly, enter his Apple ID, click Start, and
-      enter the two-factor code.
-   3. On the iPhone:
-      - Settings → Privacy & Security → Developer Mode on (it restarts);
-      - Settings → General → VPN & Device Management → trust the Apple ID;
-      - open TimeTracker once;
-      - Settings → Apps → Safari → Extensions → TT Safari on, All Websites:
-        Allow.
-   4. In Safari, tap the extensions icon in the address bar → TT Safari, paste
-      the URL from step 5, and Save.
+The app goes on the phone through TestFlight, built on a nomac cloud Mac; no
+Mac or cable needed. Follow `ios/README.md`. **(Gabe)** owns the Apple
+Developer team, the nomac credit, and installing from TestFlight; after
+installing, paste the URL from step 5 into TT Safari's popup.
 
 ## 7. The phone shortcuts
 
