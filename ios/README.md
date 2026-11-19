@@ -28,7 +28,21 @@ Bundle IDs: `com.gtholiveri.timetracker` (app) and
 defaults; the extension needs no App Group. `ITSAppUsesNonExemptEncryption`
 is `false` (HTTPS only), so uploads skip the encryption question.
 
-## Shipping a build (what the agent does)
+## Shipping a build, the short way
+
+Signing is already set up (2026-11-19: bundle IDs registered, App Store
+profiles valid until 2027-11-19, distribution certificate on every NoMac Mac).
+On a NoMac Mac with this repo at `~/drive/src/TimeTrackerOne` and the CLI
+logged in (`npm i -g @nomac/cli && nomac login`, one approval link):
+
+    NOMAC_SESSION=ses_... ios/nomac-ship.sh "What to test"
+
+It regenerates the project, archives, exports and sends the .ipa to
+TestFlight, with the UTC date and time (YYYYMMDD.HHMM) as the build number.
+The CLI on the Mac needs `--session` (the script passes it), and `nomac sign`
+needs the absolute project path; a relative one answers "No Mac for this folder".
+
+## Shipping a build, step by step (what the agent does)
 
 1. Start a Mac (`start_mac` / `nomac start`) and put the repo on its drive:
    `git clone https://github.com/gtholiveri/TimeTrackerOne ~/drive/src/TimeTrackerOne`
