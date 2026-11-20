@@ -26,6 +26,9 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: TimeTracker
+        # XcodeGen writes 1.0 (1) unless told; TestFlight needs a new build number each upload.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # No custom crypto (HTTPS only), so App Store Connect doesn't ask
         # the export-compliance question on every TestFlight build.
         ITSAppUsesNonExemptEncryption: false
@@ -56,6 +59,9 @@ targets:
       path: SafariExtension/Info.plist
       properties:
         CFBundleDisplayName: TT Safari
+        # XcodeGen writes 1.0 (1) unless told; TestFlight needs a new build number each upload.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.Safari.web-extension
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SafariWebExtensionHandler
