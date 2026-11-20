@@ -3,8 +3,8 @@
 #
 #   NOMAC_SESSION=ses_... ios/nomac-ship.sh ["What to Test notes"]
 #
-# Needs the NoMac CLI logged in on the Mac (`npm i -g @nomac/cli && nomac login`,
-# or NOMAC_API_KEY set as a NoMac secret). Signing was set up once with
+# Needs the NoMac CLI logged in on the Mac: the NoMac secret TESTFLIGHT_UPLOAD_KEY
+# (a NoMac API key), or `nomac login`. Signing was set up once with
 # `nomac sign`; its certificate, profiles and xcconfig come to every Mac.
 # The build number is the UTC date and time (YYYYMMDD.HHMM), so it always goes up.
 set -euo pipefail
@@ -16,6 +16,11 @@ signing=$HOME/.nomac/signing
 session=${NOMAC_SESSION:?set NOMAC_SESSION to this Mac's session id (start_mac / nomac start prints it)}
 
 command -v nomac >/dev/null || npm install -g @nomac/cli@latest
+# A NoMac API key kept as the NoMac secret TESTFLIGHT_UPLOAD_KEY logs the CLI in
+# with no approval link.
+if [ -n "${TESTFLIGHT_UPLOAD_KEY:-}" ] && ! nomac whoami >/dev/null 2>&1; then
+  export NOMAC_API_KEY=$TESTFLIGHT_UPLOAD_KEY
+fi
 command -v xcodegen >/dev/null || brew install xcodegen
 xcodegen generate
 
