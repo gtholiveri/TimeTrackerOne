@@ -13,7 +13,7 @@ notes=${1:-"Build from $(git rev-parse --short HEAD 2>/dev/null || echo local)"}
 team=3SC4668U86
 signing=$HOME/.nomac/signing
 # The CLI on the Mac can't tell which Mac it is on: pass this Mac's id (ses_...).
-session=${NOMAC_SESSION:?set NOMAC_SESSION to this Mac's session id (start_mac / nomac start prints it)}
+session=${NOMAC_SESSION:?set NOMAC_SESSION to the session id of this Mac (start_mac / nomac start prints it)}
 
 command -v nomac >/dev/null || npm install -g @nomac/cli@latest
 # A NoMac API key kept as the NoMac secret TESTFLIGHT_UPLOAD_KEY logs the CLI in
