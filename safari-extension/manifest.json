@@ -2,11 +2,19 @@
     "manifest_version": 3,
     "name": "TT Safari",
     "description": "Sends which page is on screen to your TimeTracker relay.",
+    "icons": {
+        "48": "icon-48.png",
+        "96": "icon-96.png",
+        "128": "icon-128.png",
+        "256": "icon-256.png",
+        "512": "icon-512.png"
+    },
     "version": "0.1",
     "background": {
         "scripts": [
             "background.js"
-        ]
+        ],
+        "persistent": false
     },
     "content_scripts": [
         {
@@ -21,7 +29,12 @@
     ],
     "action": {
         "default_popup": "popup.html",
-        "default_title": "TT Safari"
+        "default_title": "TT Safari",
+        "default_icon": {
+            "48": "icon-48.png",
+            "96": "icon-96.png",
+            "128": "icon-128.png"
+        }
     },
     "permissions": [
         "storage",
