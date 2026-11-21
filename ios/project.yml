@@ -32,6 +32,9 @@ targets:
         # No custom crypto (HTTPS only), so App Store Connect doesn't ask
         # the export-compliance question on every TestFlight build.
         ITSAppUsesNonExemptEncryption: false
+        NSLocationWhenInUseUsageDescription: TimeTracker records the places you arrive at and leave, so your day's timeline knows where you were.
+        NSLocationAlwaysAndWhenInUseUsageDescription: With Always, TimeTracker records places and big moves while it's closed. Lines go only to your own relay.
+        NSMotionUsageDescription: TimeTracker records whether you're still, walking, running, cycling or in a vehicle, for your day's timeline.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
