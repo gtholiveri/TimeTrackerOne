@@ -133,9 +133,8 @@ installing, paste the URL from step 5 into TT Safari's popup.
 phone setup links"):
 1. Install TimeTracker from TestFlight, open it, allow location (Always) and
    Motion & Fitness.
-2. Add TT Watch (paste the URL from step 5), TT App Opened and TT App Closed.
-3. Create the two automations.
-4. Start TT Watch once.
+2. Add TT Watch (paste the URL from step 5) and start it once.
+3. Create the two automations (Get Current App → Log App Opened / Closed).
 
 ## 8. Check it all end to end
 

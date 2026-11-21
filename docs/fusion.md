@@ -26,7 +26,7 @@ minutes) so that a quiet stretch can be told apart from a watcher that died.
   down, locked or not (2.3 s per tick). How long iOS allows, and how to
   relaunch it, is still being measured.
 
-**The automations (TT App Opened / TT App Closed)** log one line the instant
+**The open/close automations** log one line the instant
 any app opens or closes, with the app's name. They're reliable: T1b found that
 closes fire even on a straight power-off. But they have blind spots:
 

@@ -7,18 +7,18 @@ on the `shortcuts` pre-release. To install one, open its link on the iPhone.
 
 ## The tracker
 
-Three shortcuts, nothing else:
+One shortcut, plus two automations that call the TimeTracker app directly:
 
-| Shortcut | Link | What it does |
-| --- | --- | --- |
-| TT Watch | [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | Polls lock state and the current app every ~2 s and logs changes, plus a heartbeat with the battery level. Runs until iOS stops it. Asks for the relay URL when you add it and hands it to the app. |
-| TT App Opened | [TT-App-Opened.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-App-Opened.shortcut) | Run by the "App is opened" automation: records the opening. |
-| TT App Closed | [TT-App-Closed.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-App-Closed.shortcut) | Run by the "App is closed" automation: records the closing (locking counts). |
+| Piece | What it does |
+| --- | --- |
+| [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | Polls lock state and the current app every ~2 s and logs changes, plus a heartbeat with the battery level. Keeps lines in memory while locked and hands them to the app (Log TT Lines) at the unlock. Runs until iOS stops it. Asks for the relay URL when you add it. |
+| "App is opened" automation | Get Current App → TimeTracker **Log App Opened**. |
+| "App is closed" automation | Get Current App → TimeTracker **Log App Closed** (locking counts as a close). |
 
-None of them touch the network. They hand their lines to the TimeTracker app
-(`ios/`), which queues them and uploads when there's network, so they never
-show an error banner. TT Watch also keeps a copy in `tt-watch-<date>.txt` in
-iCloud Drive > Shortcuts.
+Nothing here touches a file or the network. The app (`ios/`) queues every
+line and uploads it when there's network, so nothing shows an error banner.
+TT Watch has to stay a shortcut: only Shortcuts can read Device Is Locked and
+the app in front.
 
 How the relay combines them: [`docs/fusion.md`](../docs/fusion.md).
 
@@ -27,22 +27,22 @@ How the relay combines them: [`docs/fusion.md`](../docs/fusion.md).
 You need the relay running ([`server/README.md`](../server/README.md)) and
 the TimeTracker app from TestFlight.
 
-1. Add **TT Watch**, **TT App Opened** and **TT App Closed** from the links.
-   TT Watch asks for `https://<your relay>/tt/ingest?key=<TT_INGEST_KEY>`.
-2. Two automations in Shortcuts → Automation → **+** (existing ones keep
-   working, the names haven't changed):
-   - **App** → *Choose* → every app → **Is Opened** only → **Run Immediately**
-     → **TT App Opened**.
-   - Same with **Is Closed** only → **TT App Closed**.
-   - *Notify When Run* off on both.
-3. Start **TT Watch** by tapping it once. That also gives the app the relay
-   URL (or paste it in the app).
-4. Delete TT Sync and the old test shortcuts (TT Brightness, TT Lock Direct,
-   TT Lock Buffer, TT Lock Watch) if you still have them.
+1. Add **TT Watch** from the link and answer its question with
+   `https://<your relay>/tt/ingest?key=<TT_INGEST_KEY>`. Tap it once to start
+   it; that also gives the app the relay URL and the phone's name.
+2. Shortcuts → Automation → **+** → **App** → *Choose* → every app → tick
+   **Is Opened** only → **Run Immediately** → *Next* → **New Blank
+   Automation**. Add **Get Current App**, then **Log App Opened** (under
+   TimeTracker); its Current App is filled in with Get Current App's result.
+   If it isn't, tap the field and pick *Current App*.
+3. Same again with **Is Closed** only and **Log App Closed**.
+4. Turn off *Notify When Run* on both.
+5. Delete TT Sync, TT App Opened, TT App Closed and the old test shortcuts if
+   you still have them (replace the actions in any old automations first).
 
 `https://<your relay>/tt/state?key=<TT_KEY>` should show your phone and its
 current app; `/tt/lines` shows exactly what arrived. The app's *Waiting to
-upload* should drop to 0 when online.
+upload* drops to 0 when online.
 
 The retired experiments are in [`test-harness/shortcuts/`](../test-harness/shortcuts).
 

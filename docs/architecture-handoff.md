@@ -34,8 +34,8 @@ REST API. Our relay is one more watcher, for the phone.
  iPhone                                        Fly.io (always on)                Laptop
  ──────                                        ──────────────────                ──────
  TT Watch (loop)      ─┐ app actions           relay (server/ttserver)           ActivityWatch (local)
- TT App Opened/Closed ─┤ (never fail)          · stores raw lines (SQLite)  ◀──  window / AFK / Chrome
- (personal automations)▼                       · fuses them (fusion.py)          watchers, as usual
+ open/close automations┤ (never fail)          · stores raw lines (SQLite)  ◀──  window / AFK / Chrome
+                       ▼                       · fuses them (fusion.py)          watchers, as usual
  TimeTracker app: queue ───────HTTPS──▶        · writes ActivityWatch buckets       │
    + location, motion                          · /tt/state live feed             mirror.py copies local
  TT Safari (extension) ───────────HTTPS──▶     · ActivityWatch web UI ◀────────  buckets every minute
@@ -49,17 +49,18 @@ REST API. Our relay is one more watcher, for the phone.
 - reads `Device Is Locked` and `Get Current App`;
 - logs a line only when either changed, plus a heartbeat every 150 ticks
   (~6 minutes) carrying the battery level;
-- writes to `tt-watch-<date>.txt` in iCloud Drive > Shortcuts.
+- hands them to the TimeTracker app (Log TT Lines).
 
 While the phone is locked it writes nothing: lines wait in memory and are
-written right after the unlock, each with its own timestamp, and handed to
-the TimeTracker app (Log TT Lines) in the same step, so the relay hears about
+handed to the TimeTracker app (Log TT Lines) right after the unlock, each
+with its own timestamp, so the relay hears about
 an unlock even when it fires no automation. It loops until iOS stops it.
 
-**TT App Opened / TT App Closed** are run by two personal automations (any
-app, Is Opened / Is Closed, Run Immediately). Each hands one line, with the
-app the automation passed in, to the TimeTracker app (Log App Event).
-Locking the phone fires a close; unlocking fires nothing.
+**Opens and closes** come from two personal automations (any app, Is
+Opened / Is Closed, Run Immediately) whose only steps are Get Current App and
+the app's Log App Opened / Log App Closed. iOS passes the automation no app
+name, so Get Current App is what identifies the app. Locking the phone fires
+a close; unlocking fires nothing.
 
 **The TimeTracker app** (`ios/App/`, since 2026-11-21) owns the phone's
 network traffic. Its Shortcuts actions (`TTIntents.swift`) append lines to a
@@ -73,9 +74,9 @@ error banner offline. The app also records, with the app closed
   from the motion coprocessor's 7-day history whenever the app runs.
 Fusion doesn't use these yet; they're stored raw.
 
-That's the whole phone setup: TT Watch, TT App Opened, TT App Closed and the
-app. TT Sync and the Trial 1/2 test shortcuts are retired
-(`test-harness/shortcuts/`).
+That's the whole phone setup: the app, TT Watch and the two automations. TT
+Sync, TT App Opened/Closed, the iCloud log files and the Trial 1/2 test
+shortcuts are retired (`test-harness/shortcuts/`).
 
 **Line format:** `tt|src=ios|kind=change|dev=...|ts=...|locked=No|cur=Safari`.
 These are key=value pairs, not JSON, because Cherri reads `{...}` in strings as
@@ -240,7 +241,7 @@ written), and the dashboard.
   which TT Watch no longer risks. Restart ideas, none tried:
   - time-of-day, wake-up and charger automations; first test what starting
     TT Watch does while one is already running;
-  - TT App Opened launching it when the relay reports the watcher dead.
+  - the open automation launching it when the relay reports the watcher dead.
     "Run Shortcut" waits for the child to finish, which complicates this.
 - **Offline** is handled by the app's queue since 2026-11-21 (not yet
   proven on the phone).

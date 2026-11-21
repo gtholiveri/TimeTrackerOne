@@ -48,6 +48,51 @@ struct LogAppEventIntent: AppIntent {
     }
 }
 
+/// The actions an "App is opened" / "App is closed" automation runs directly,
+/// after Get Current App: no shortcut to import. iOS gives the automation no
+/// app name of its own, so Get Current App is what says which app it was.
+private func logAppEvent(_ kind: String, current: String?) async {
+    let line = TTLine.make(kind: kind, [("input", ""), ("cur", current ?? "")])
+    await TTLog.shared.record([line])
+    await MainActor.run { TTSensors.shared.catchUpMotion() }
+}
+
+struct LogAppOpenedIntent: AppIntent {
+    static let title: LocalizedStringResource = "Log App Opened"
+    static let description = IntentDescription(
+        "For the \"App is opened\" automation: put Get Current App first and pass its result in. Records it for TimeTracker. Never fails."
+    )
+    static let openAppWhenRun = false
+
+    @Parameter(title: "Current App", description: "The result of Get Current App")
+    var current: String?
+
+    static var parameterSummary: some ParameterSummary { Summary("Log \(\.$current) opened") }
+
+    func perform() async throws -> some IntentResult {
+        await logAppEvent("open", current: current)
+        return .result()
+    }
+}
+
+struct LogAppClosedIntent: AppIntent {
+    static let title: LocalizedStringResource = "Log App Closed"
+    static let description = IntentDescription(
+        "For the \"App is closed\" automation: put Get Current App first and pass its result in. Records it for TimeTracker. Never fails."
+    )
+    static let openAppWhenRun = false
+
+    @Parameter(title: "Current App", description: "The result of Get Current App")
+    var current: String?
+
+    static var parameterSummary: some ParameterSummary { Summary("Log closed, now in \(\.$current)") }
+
+    func perform() async throws -> some IntentResult {
+        await logAppEvent("close", current: current)
+        return .result()
+    }
+}
+
 struct LogLinesIntent: AppIntent {
     static let title: LocalizedStringResource = "Log TT Lines"
     static let description = IntentDescription(

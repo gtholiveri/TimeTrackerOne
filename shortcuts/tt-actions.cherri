@@ -18,20 +18,11 @@ action 'file.append' appendLine(text filePath: 'WFFilePath', text line: 'WFInput
     "WFAppendOnNewLine": true
 }
 
-// TimeTracker app actions (ios/App/TTIntents.swift). They record lines in the
+// TimeTracker app action (ios/App/TTIntents.swift). They record lines in the
 // app's queue and upload them when there's network, and never fail, so an
 // automation never shows an error banner. Parameter names here must match the
 // Swift ones. Cherri wraps the nested AppIntentDescriptor in a Shortcuts
 // dictionary value; fix-app-intents.py unwraps it before signing.
-action 'com.gtholiveri.timetracker.LogAppEventIntent' logAppEvent(text kind: 'kind', text app: 'app', text current: 'current', text device: 'device') {
-    "AppIntentDescriptor": {
-        "AppIntentIdentifier": "LogAppEventIntent",
-        "BundleIdentifier": "com.gtholiveri.timetracker",
-        "Name": "TimeTracker",
-        "TeamIdentifier": "3SC4668U86"
-    }
-}
-
 action 'com.gtholiveri.timetracker.LogLinesIntent' logLines(text lines: 'lines', text device: 'device', text relay: 'relay') {
     "AppIntentDescriptor": {
         "AppIntentIdentifier": "LogLinesIntent",

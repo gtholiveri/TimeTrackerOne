@@ -6,8 +6,7 @@ Every ~2 s it reads Device Is Locked and the current app. It adds a line when
 either changed, plus a heartbeat every 150 ticks (about 6 minutes), so a quiet
 stretch can be told apart from a dead watcher. Nothing is written while the
 phone is locked (that is what made TT Lock Direct fail): lines wait in memory
-and are appended to tt-watch-<date>.txt in iCloud Drive > Shortcuts as soon as
-Is Locked reads No.
+and go to the TimeTracker app (Log TT Lines) as soon as Is Locked reads No.
     tt|src=ios|kind=change|dev=<device>|run=<id>|ts=<time>|tick=<n>|locked=<Yes/No>|cur=<app>
 kind is start, change, beat or end. The start line, and each beat taken while
 unlocked, also carry battery=<0-100>.
@@ -15,10 +14,10 @@ unlocked, also carry battery=<0-100>.
 It loops until iOS stops it (100000 ticks would be about 64 hours), so the
 last heartbeat in the log shows how long iOS let it run.
 
-Each batch also goes to the TimeTracker app (Log TT Lines), which queues it
-and uploads it when there's network. The app's action never fails, so the
-loop no longer stops when the network drops, and the relay hears about an
-unlock straight away even when it fires no automation.
+The app queues each batch and uploads it when there's network. Its action
+never fails, so the loop doesn't stop when the network drops, and the relay
+hears about an unlock straight away even when it fires no automation. No
+files: the app is the only store on the phone.
 */
 
 #define name TT Watch
@@ -67,14 +66,12 @@ repeat i for 100000 {
     }
     if @lockedText == "No" {
         if @pending > 0 {
-            // One text, not a list: a list makes Append to Text File ask "Choose an item".
+            // One text, not a list. The app queues and uploads it; it never
+            // fails, online or off.
             const lines = joinText(@buffer, "\n")
-            const day = formatDate(CurrentDate, "Custom", "yyyy-MM-dd")
-            const written1 = appendLine("tt-watch-{day}.txt", "{lines}")
+            const logged = logLines("{lines}", "{dev}", "{base}")
             @buffer = []
             @pending = 0
-            // The app queues and uploads them; it never fails, online or off.
-            const logged = logLines("{lines}", "{dev}", "{base}")
         }
     }
     wait(2)
@@ -83,6 +80,4 @@ repeat i for 100000 {
 const ended = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
 @buffer += "tt|src=ios|kind=end|dev={dev}|run={run}|ts={ended}"
 const rest = joinText(@buffer, "\n")
-const endDay = formatDate(CurrentDate, "Custom", "yyyy-MM-dd")
-const written2 = appendLine("tt-watch-{endDay}.txt", "{rest}")
 const logged2 = logLines("{rest}", "{dev}", "{base}")
