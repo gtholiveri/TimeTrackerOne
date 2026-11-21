@@ -62,7 +62,7 @@ from .whoop import Whoop
 from .fusion import fuse
 from .labels import Labeler
 from .lines import parse_line, to_record
-from .store import Store, iso_utc
+from .store import GENERIC_DEVICES, Store, iso_utc
 from .web import web_segments
 
 RECONCILE_RECENT = timedelta(hours=6)   # always re-derive at least this much
@@ -417,6 +417,10 @@ def ingest(relay: Relay, q: dict[str, str], body: str) -> str:
     raw = body.split("\n") if body else []
     devs = sorted({d["dev"] for d in map(parse_line, raw) if d and d.get("dev")})
     new, earliest = relay.store.add_lines(raw, "ios", q.get("dev"))
+    adopted = relay.store.adopt_generic()
+    if adopted:
+        relay.mark(*adopted)
+    devs = [relay.store.real_device() or d if d in GENERIC_DEVICES else d for d in devs]
     for dev in devs or ([q["dev"]] if q.get("dev") else []):
         relay.mark(dev, earliest)
     name, mode = q.get("file"), q.get("mode", "full")

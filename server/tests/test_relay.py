@@ -192,3 +192,23 @@ class Dashboard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GenericDeviceName(unittest.TestCase):
+    """The app tags lines "iPhone" until TT Watch hands it the real name."""
+
+    def test_generic_lines_join_the_real_phone(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(f"{d}/tt.db")
+            early = line(0, "open", cur="Safari").replace(f"dev={DEV}", "dev=iPhone")
+            relay = Relay(store, None)
+            ingest(relay, {}, early)
+            self.assertEqual([x for x, _ in store.devices()], ["iPhone"])
+            ingest(relay, {}, line(5, "start", run="1"))
+            self.assertEqual([x for x, _ in store.devices()], [DEV])
+            later = line(10, "close", cur="").replace(f"dev={DEV}", "dev=iPhone")
+            ingest(relay, {}, later)
+            self.assertEqual([x for x, _ in store.devices()], [DEV])
+            self.assertTrue(all(f"dev={DEV}" in r for r in store.raw("ios", T0 - timedelta(hours=1))))
+            ingest(relay, {}, early)  # a resend is still a duplicate
+            self.assertEqual(len(store.raw("ios", T0 - timedelta(hours=1))), 3)

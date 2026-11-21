@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS lines (
     received REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS lines_by_time ON lines (source, ts);
+CREATE INDEX IF NOT EXISTS lines_by_dev ON lines (source, dev);
 
 -- How many lines of each phone file the server has, for TT Sync's tail uploads.
 CREATE TABLE IF NOT EXISTS files (
@@ -37,6 +38,11 @@ CREATE TABLE IF NOT EXISTS files (
     PRIMARY KEY (dev, name)
 );
 """
+
+
+# What iOS tells an app the phone is called. Only Shortcuts sees the real name,
+# so the TimeTracker app tags lines "iPhone" until TT Watch hands it the name.
+GENERIC_DEVICES = ("iPhone", "iPad")
 
 
 def iso_utc(ts: datetime) -> str:
@@ -55,6 +61,7 @@ class Store:
         new = 0
         earliest = None
         now = time.time()
+        real = self.real_device() if source == "ios" else None
         with self.lock, self.db:
             for raw in raw_lines:
                 raw = raw.strip()
@@ -62,15 +69,45 @@ class Store:
                 if d is None:
                     continue
                 ts = parse_ts(d.get("ts"))
+                # Hash the line as sent, so a resend stays a duplicate after renaming.
                 h = hashlib.sha256(f"{source}\n{raw}".encode()).hexdigest()
+                line_dev = d.get("dev") or dev
+                if real and line_dev in GENERIC_DEVICES:
+                    raw = raw.replace(f"|dev={line_dev}|", f"|dev={real}|", 1)
+                    line_dev = real
                 cur = self.db.execute(
                     "INSERT OR IGNORE INTO lines (hash, source, dev, ts, raw, received) VALUES (?, ?, ?, ?, ?, ?)",
-                    (h, source, d.get("dev") or dev, iso_utc(ts) if ts else None, raw, now))
+                    (h, source, line_dev, iso_utc(ts) if ts else None, raw, now))
                 if cur.rowcount:
                     new += 1
                     if ts and (earliest is None or ts < earliest):
                         earliest = ts
         return new, earliest
+
+    def real_device(self) -> str | None:
+        """The newest phone name that isn't iOS's generic one."""
+        for dev, _ in self.devices("ios"):
+            if dev not in GENERIC_DEVICES:
+                return dev
+        return None
+
+    def adopt_generic(self) -> tuple[str, datetime] | None:
+        """Give lines tagged with a generic name ("iPhone") the phone's real name,
+        once one is known. Returns (name, earliest renamed line) if any changed."""
+        real = self.real_device()
+        if real is None:
+            return None
+        with self.lock, self.db:
+            rows = self.db.execute(
+                "SELECT id, dev, raw, ts FROM lines WHERE source = 'ios' AND dev IN (%s)"
+                % ",".join("?" * len(GENERIC_DEVICES)), GENERIC_DEVICES).fetchall()
+            for id_, dev, raw, _ in rows:
+                self.db.execute("UPDATE lines SET dev = ?, raw = ? WHERE id = ?",
+                                (real, raw.replace(f"|dev={dev}|", f"|dev={real}|", 1), id_))
+        stamps = [r[3] for r in rows if r[3]]
+        if not stamps:
+            return None
+        return real, datetime.fromisoformat(min(stamps))
 
     def lines(self, source: str, since: datetime, dev: str | None = None) -> list[tuple[str | None, dict]]:
         """(device, parsed line) for every line of `source` at or after `since`, oldest first."""
