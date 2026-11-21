@@ -41,6 +41,30 @@ If your tools can only open URLs, use `?key=KEY`. Wrong or missing key: HTTP
 logged by which key made them). Treat it as a password: don't print it in
 shared output.
 
+## Easiest: the MCP server
+
+If your client speaks MCP, connect to the relay as an MCP server instead of
+building URLs:
+
+| Client | Address |
+| --- | --- |
+| URL-only (Claude.ai custom connector, no sign-in) | `https://tt-relay-gabe.fly.dev/mcp/KEY` |
+| Can send headers (Claude Code, Hermes) | `https://tt-relay-gabe.fly.dev/mcp` with `Authorization: Bearer KEY` |
+
+Streamable HTTP, stateless, JSON answers. Tools, all read-only:
+
+| Tool | What it returns |
+| --- | --- |
+| `get_live_state` | What each device is doing now, plus the recent fused phone timeline |
+| `get_daily_summary` | Per-day totals by category, rating, app and site; unlocks |
+| `get_activity` | Categorized segments in time order (one attention line, or per device) |
+| `get_location` | Phone GPS track points and visits, raw coordinates with accuracy |
+| `get_motion` | Phone motion changes: stationary, walking, running, cycling, automotive |
+| `get_whoop` | WHOOP cycles, recoveries, sleeps, workouts, profile, body, as WHOOP sends them |
+| `get_raw_lines` | Every raw line received, filterable by kind |
+
+The HTTP endpoints below return the same data.
+
 ## Start here: the two analysis endpoints
 
 These do the work the dashboard does (joining devices, dropping away time,

@@ -34,6 +34,9 @@ revokes it alone:
     GET  /tt/whoop?key=KEY[&kind=cycle|recovery|sleep|workout|profile|body][&days=N]
         The WHOOP records, whole, oldest first. /tt/whoop/status: counts and
         the last sync.
+    POST /mcp  (key as bearer or ?key=)   or   POST /mcp/KEY
+        MCP server (streamable HTTP, stateless) with read-only tools for all of
+        it: live state, summary, activity, location, motion, WHOOP, raw lines.
     GET  /tt/health
     GET  /app/
         The dashboard (server/dashboard, built into dashboard/dist).
@@ -57,7 +60,7 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import activity, awsync
+from . import activity, awsync, mcp
 from .whoop import Whoop
 from .fusion import fuse
 from .labels import Labeler
@@ -192,7 +195,7 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                 who = headers.get("Fly-Client-IP") or headers.get("X-Forwarded-For") or self.address_string()
                 if getattr(self, "agent", None):
                     who += f" [{self.agent}]"
-                log(who, re.sub(r"key=[^&\s\"]*", "key=…", fmt % args))
+                log(who, re.sub(r"/mcp/[^\s?\"]+", "/mcp/…", re.sub(r"key=[^&\s\"]*", "key=…", fmt % args)))
 
         # ------------------------------------------------------------ helpers
 
@@ -203,6 +206,9 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
             """The full key opens everything; the ingest key (if set) only the upload
             endpoints; the read key (if set) only what reads and changes nothing."""
             supplied = self.query().get("key")
+            path = urllib.parse.urlsplit(self.path).path
+            if path.startswith("/mcp/"):
+                supplied = urllib.parse.unquote(path[len("/mcp/"):]).strip("/")  # /mcp/<KEY> for URL-only clients
             auth = self.headers.get("Authorization", "")
             if auth.startswith("Bearer "):
                 supplied = auth[7:].strip()
@@ -261,6 +267,24 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
             ctype = CONTENT_TYPES.get(ext) or mimetypes.guess_type(file)[0] or "application/octet-stream"
             cache = "public, max-age=31536000, immutable" if rel.startswith("assets/") else "no-cache"
             return self.send(200, data, ctype, extra={"Cache-Control": cache})
+
+        def mcp_route(self, path: str):
+            if not self.authorized(read=True):
+                self.close_connection = True
+                if path.startswith("/mcp/"):
+                    return self.send(404, "not found\n")  # no 401: clients would start OAuth discovery
+                return self.send(401, "bad key\n", extra={"WWW-Authenticate": "Bearer"})
+            try:
+                message = json.loads(self.body() or b"{}")
+            except ValueError:
+                return self.send(400, {"jsonrpc": "2.0", "id": None,
+                                       "error": {"code": -32700, "message": "parse error"}})
+            batch = message if isinstance(message, list) else [message]
+            replies = [r for m in batch if isinstance(m, dict)
+                       if (r := mcp.handle(m, relay, whoop, state_json, activity)) is not None]
+            if not replies:
+                return self.send(202, b"")
+            return self.send(200, replies if isinstance(message, list) else replies[0])
 
         def whoop_route(self, path: str):
             if whoop is None:
@@ -329,6 +353,8 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                     return self.send(502, f"{type(e).__name__}: {e}\n")
             if path.startswith("/tt/whoop"):
                 return self.whoop_route(path)
+            if path == "/mcp" or path.startswith("/mcp/"):
+                return self.send(405, "POST only (stateless MCP, no SSE stream)\n", extra={"Allow": "POST"})
             if path == "/tt/lines":
                 if not self.authorized(read=True):
                     return self.challenge()
@@ -355,6 +381,8 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                 if path == "/tt/ingest":
                     return self.send(200, ingest(relay, self.query(), body) + "\n")
                 return self.send(200, ingest_safari(relay, self.query(), body))
+            if path == "/mcp" or path.startswith("/mcp/"):
+                return self.mcp_route(path)
             if path == "/tt/labels":
                 if not self.authorized():
                     self.close_connection = True  # the unread body would be taken for the next request
