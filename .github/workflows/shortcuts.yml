@@ -37,15 +37,28 @@ jobs:
       - name: Compile and sign
         working-directory: shortcuts
         run: |
+          # Cherri compiles each one unsigned; fix-app-intents.py repairs the
+          # TimeTracker app actions (Cherri wraps their AppIntentDescriptor);
+          # then RoutineHub's HubSign signs it, the same request Cherri makes.
+          mkdir -p ../out
           for f in tt-*.cherri; do
             [ "$f" = "tt-actions.cherri" ] && continue
-            cherri "$f" --share=anyone --derive-uuids --no-ansi
+            cherri "$f" --skip-sign --derive-uuids --no-ansi
           done
-          mkdir -p ../out
-          for f in *.shortcut; do
+          for f in *_unsigned.shortcut; do
+            name="${f%_unsigned.shortcut}"
+            python3 fix-app-intents.py "$f" "$RUNNER_TEMP/$name.xml"
+            python3 -c 'import json,sys; print(json.dumps({"shortcutName": sys.argv[1], "shortcut": open(sys.argv[2]).read()}))' \
+              "$name" "$RUNNER_TEMP/$name.xml" > "$RUNNER_TEMP/payload.json"
+            out="../out/${name// /-}.shortcut"
+            for try in 1 2 3; do
+              code=$(curl -sS -o "$out" -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+                -A cherri/ci --data-binary @"$RUNNER_TEMP/payload.json" https://hubsign.routinehub.services/sign) || code=0
+              [ "$code" = 200 ] && break
+              echo "$name: HubSign answered $code, retrying"; sleep $((try * 10))
+            done
             # Signed shortcuts are Apple Encrypted Archives, starting with "AEA1".
-            [ "$(head -c 4 "$f")" = "AEA1" ] || { echo "$f is not signed"; exit 1; }
-            mv "$f" "../out/${f// /-}"
+            [ "$(head -c 4 "$out")" = "AEA1" ] || { echo "$name is not signed"; exit 1; }
           done
           ls -la ../out
 

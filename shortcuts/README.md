@@ -9,49 +9,49 @@ on the `shortcuts` pre-release. To install one, open its link on the iPhone.
 
 | Shortcut | Link | What it does |
 | --- | --- | --- |
-| TT Sync | [TT-Sync.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Sync.shortcut) | Uploads what's new in today's log files to the relay. Asks for the relay URL when you add it. |
-| TT App Opened | [TT-App-Opened.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-App-Opened.shortcut) | Logs an app opening to `tt-events-<date>.txt`, then runs TT Sync. |
+| TT Sync | [TT-Sync.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Sync.shortcut) | Hands the TimeTracker app the relay URL and this phone's name, and uploads anything it has queued. Asks for the relay URL when you add it. Run it once; after that the app uploads by itself. |
+| TT App Opened | [TT-App-Opened.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-App-Opened.shortcut) | Hands an app opening to the TimeTracker app (its Log App Event action). |
 | TT App Closed | [TT-App-Closed.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-App-Closed.shortcut) | Same, for an app closing (locking the phone counts). |
-| TT Watch | [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | The lock/app watcher (the Lock Buffer recipe). Runs until iOS stops it. Logs changes, and a heartbeat with the battery level, to `tt-watch-<date>.txt`, and uploads that file itself after each unlock (only with Wi-Fi or signal). Asks for the relay URL when you add it. |
+| TT Watch | [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | The lock/app watcher (the Lock Buffer recipe). Runs until iOS stops it. Logs changes, and a heartbeat with the battery level, to `tt-watch-<date>.txt` and to the TimeTracker app (Log TT Lines) after each unlock. Asks for the relay URL when you add it. |
+
+All network traffic now goes through the TimeTracker app (`ios/`): its
+actions queue the lines in the app and upload them when there's network, and
+they never fail, so nothing shows an error banner offline. The app also
+records location (visits and moves) and motion activity on its own.
 
 How the relay combines them: [`docs/fusion.md`](../docs/fusion.md).
 
 ### Setup
 
 You need the relay running first ([`server/README.md`](../server/README.md)),
-with its URL and key at hand.
+with its URL and key at hand, and the TimeTracker app installed from
+TestFlight.
 
-1. **Add TT Sync first**, because the others run it by name. Open its link,
-   tap *Add Shortcut*, and answer the question with
-   `https://<your relay>/tt/ingest?key=<TT_INGEST_KEY>`. Keep the name it
-   arrives with, "TT-Sync": the others run it by that name.
-2. **Run TT Sync once by hand** (tap it in the Shortcuts app). iOS asks
-   whether it may connect to your relay; choose *Always Allow*. If you skip
-   this, the question pops up later in the middle of an automation.
+1. **Open TimeTracker once**, tap *Allow location and motion*, choose
+   *Allow While Using App*, then *Change to Always Allow* when iOS asks again,
+   and allow Motion & Fitness.
+2. **Add TT Sync**, answer its question with
+   `https://<your relay>/tt/ingest?key=<TT_INGEST_KEY>`, and **run it once by
+   hand**. It should say "all sent". The app now knows the relay.
 3. **Add TT App Opened, TT App Closed and TT Watch** from their links. TT
-   Watch asks for the same URL as TT Sync.
-4. **Create the two automations.** In Shortcuts → Automation → **+**:
-   - **App** → *Choose* → select every app (or every app you care about) → tick **Is Opened** only →
+   Watch asks for the same URL.
+4. **Create the two automations** (or edit the ones you have; they keep
+   working with the new shortcuts of the same names). In Shortcuts →
+   Automation → **+**:
+   - **App** → *Choose* → select every app → tick **Is Opened** only →
      **Run Immediately** → *Next* → pick **TT App Opened**.
    - Same again, ticking **Is Closed** only → **TT App Closed**.
    - Turn off *Notify When Run* on both.
-5. **Start TT Watch** by tapping it, once, then lock the phone and unlock it.
-   The first upload after that unlock asks whether TT Watch may connect to
-   your relay; choose *Always Allow*. It runs until iOS stops it; the relay's
-   `/tt/state` shows when its last line arrived. How it gets restarted is
-   still open.
+5. **Start TT Watch** by tapping it, once.
 6. Open and close a couple of apps, then check
    `https://<your relay>/tt/state?key=<TT_KEY>`: your phone should be there,
-   with its current app.
+   with its current app. The TimeTracker app's *Waiting to upload* should be 0.
 
 If something misbehaves, `https://<your relay>/tt/lines?key=<TT_KEY>` shows
 exactly which lines arrived.
 
-**Known issue:** TT Sync fails without network, and so does whatever ran it,
-so offline every app switch can show an error banner. TT Watch skips its own
-upload when there's no Wi-Fi network and no signal, and keeps going; on Wi-Fi
-without internet it still stops at its next unlock. Nothing is lost: the
-lines stay in the files and go up with the next sync that works.
+Before the app (until 2026-11-21), TT Sync uploaded the files itself and failed
+without network, taking whatever ran it down with it.
 
 ## Test shortcuts
 
@@ -69,7 +69,11 @@ They write `tt|key=value|...` lines to `tt-bright.txt`, `tt-lockdirect.txt`,
 ## Notes on writing them
 
 - `tt-actions.cherri` declares Get Current App, Get Device Details and
-  Append to Text File with the identifiers and settings the Shortcuts app uses.
+  Append to Text File with the identifiers and settings the Shortcuts app uses,
+  and the TimeTracker app's actions. The pinned Cherri wraps an app action's
+  `AppIntentDescriptor` as a Shortcuts dictionary, which iOS doesn't accept,
+  so CI compiles unsigned, runs `fix-app-intents.py`, and signs with HubSign
+  itself.
   Cherri's built-in versions lack Device Is Locked and Make New Line.
 - Cherri reads `{...}` inside strings as variables, so the lines are key=value
   pairs, not JSON.

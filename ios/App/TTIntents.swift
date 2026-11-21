@@ -1,4 +1,4 @@
-// Shortcuts actions. They replace TT Sync: each one records its lines in the
+// Shortcuts actions. They replace the shortcuts' own uploads: each one records its lines in the
 // app's queue (TTLog) and tries an upload, and none of them ever fails, so an
 // automation never shows an error banner, online or off.
 //
@@ -56,7 +56,7 @@ struct LogLinesIntent: AppIntent {
     static let openAppWhenRun = false
 
     @Parameter(title: "Lines")
-    var lines: String
+    var lines: String?
 
     @Parameter(title: "Device Name")
     var device: String?
@@ -66,7 +66,7 @@ struct LogLinesIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         applySettings(relay: relay, device: device)
-        let split = lines.split(whereSeparator: \.isNewline).map(String.init)
+        let split = (lines ?? "").split(whereSeparator: \.isNewline).map(String.init)
         await TTLog.shared.record(split)
         await MainActor.run { TTSensors.shared.catchUpMotion() }
         return .result()
@@ -78,7 +78,14 @@ struct SyncNowIntent: AppIntent {
     static let description = IntentDescription("Uploads anything TimeTracker still has queued. Never fails.")
     static let openAppWhenRun = false
 
+    @Parameter(title: "Device Name")
+    var device: String?
+
+    @Parameter(title: "Relay URL")
+    var relay: String?
+
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        applySettings(relay: relay, device: device)
         await MainActor.run { TTSensors.shared.catchUpMotion() }
         await TTLog.shared.flush()
         let left = await TTLog.shared.pendingCount()
