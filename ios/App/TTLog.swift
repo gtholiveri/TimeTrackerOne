@@ -67,6 +67,7 @@ actor TTLog {
 
     private let queueURL: URL
     private var uploading = false
+    private var lastAttempt = Date.distantPast
 
     init() {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -79,17 +80,22 @@ actor TTLog {
         readQueue().count
     }
 
-    /// Adds lines to the queue, then tries one upload. Never throws.
-    func record(_ lines: [String]) async {
+    /// Adds lines to the queue, then tries an upload. With uploadNow false
+    /// (GPS fixes, which come every few seconds while moving) it uploads only
+    /// if the last try was over a minute ago. Never throws.
+    func record(_ lines: [String], uploadNow: Bool = true) async {
         let clean = lines.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         if !clean.isEmpty { append(clean) }
-        await flush()
+        if uploadNow || Date().timeIntervalSince(lastAttempt) > 60 {
+            await flush()
+        }
     }
 
     /// Uploads everything queued, in batches. Stops quietly at the first failure.
     func flush() async {
         guard !uploading else { return }
         uploading = true
+        lastAttempt = Date()
         defer { uploading = false }
         while true {
             let queue = readQueue()

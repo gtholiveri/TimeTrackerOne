@@ -33,7 +33,8 @@ targets:
         # the export-compliance question on every TestFlight build.
         ITSAppUsesNonExemptEncryption: false
         NSLocationWhenInUseUsageDescription: TimeTracker records the places you arrive at and leave, so your day's timeline knows where you were.
-        NSLocationAlwaysAndWhenInUseUsageDescription: With Always, TimeTracker records places and big moves while it's closed. Lines go only to your own relay.
+        NSLocationAlwaysAndWhenInUseUsageDescription: With Always, TimeTracker records where you go while it's closed, as a GPS track while you move. Lines go only to your own relay.
+        UIBackgroundModes: [location]
         NSMotionUsageDescription: TimeTracker records whether you're still, walking, running, cycling or in a vehicle, for your day's timeline.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:

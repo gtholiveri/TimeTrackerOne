@@ -1,11 +1,13 @@
 // Location and movement, recorded as tt| lines through TTLog.
 //
-// Location: visits (iOS's "arrived at / left a place") and significant
-// location changes (a new fix about every 500 m of travel). Both keep working
-// with the app closed: iOS relaunches it in the background for each event.
-// That needs "Always" location permission.
+// Location: a GPS track while moving (a fix every ~20 m, raw coordinates with
+// iOS's accuracy estimate), which iOS pauses once you've been still for a
+// while. Visits (iOS's "arrived at / left a place") and significant location
+// changes (about every 500 m) keep running underneath at almost no cost: they
+// relaunch the app in the background after a pause or a kill, and the track
+// starts again. All of it needs "Always" location permission.
 //     tt|src=ios|kind=visit|...|arrive=<time>|depart=<time or ->|lat=..|lon=..|acc=..
-//     tt|src=ios|kind=loc|...|lat=..|lon=..|acc=..|speed=..|course=..
+//     tt|src=ios|kind=loc|...|lat=..|lon=..|acc=..|alt=..|vacc=..|speed=..|course=..
 //
 // Movement: the motion coprocessor's activity log (stationary, walking,
 // running, cycling, automotive). iOS keeps 7 days of it, so the app queries
@@ -25,11 +27,16 @@ final class TTSensors: NSObject, CLLocationManagerDelegate {
     private let location = CLLocationManager()
     private let motion = CMMotionActivityManager()
     private var motionQueryRunning = false
+    private var backgroundSession: CLBackgroundActivitySession?
 
     override init() {
         super.init()
         location.delegate = self
-        location.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        location.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        location.distanceFilter = 20
+        location.activityType = .other
+        // iOS stops the track once you've been still for a while; visits and
+        // significant changes wake the app and restart it when you move.
         location.pausesLocationUpdatesAutomatically = true
     }
 
@@ -59,7 +66,11 @@ final class TTSensors: NSObject, CLLocationManagerDelegate {
     /// events: monitoring has to be restarted each time the app starts.
     func start() {
         switch location.authorizationStatus {
-        case .authorizedAlways, .authorizedWhenInUse:
+        case .authorizedAlways:
+            location.startMonitoringVisits()
+            location.startMonitoringSignificantLocationChanges()
+            startTrack()
+        case .authorizedWhenInUse:
             location.startMonitoringVisits()
             location.startMonitoringSignificantLocationChanges()
         default:
@@ -79,7 +90,23 @@ final class TTSensors: NSObject, CLLocationManagerDelegate {
         catchUpMotion()  // the first motion query shows the Motion & Fitness prompt
     }
 
+    /// The continuous GPS track. Safe to call again and again.
+    func startTrack() {
+        guard location.authorizationStatus == .authorizedAlways else { return }
+        location.allowsBackgroundLocationUpdates = true
+        location.showsBackgroundLocationIndicator = false
+        if backgroundSession == nil { backgroundSession = CLBackgroundActivitySession() }
+        location.startUpdatingLocation()
+    }
+
     // MARK: - CLLocationManagerDelegate
+
+    nonisolated func locationManagerDidPauseLocationUpdates(_ manager: CLLocationManager) {
+        let line = TTLine.make(kind: "locpause")
+        Task { await TTLog.shared.record([line]) }
+    }
+
+    nonisolated func locationManagerDidResumeLocationUpdates(_ manager: CLLocationManager) {}
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
@@ -102,7 +129,7 @@ final class TTSensors: NSObject, CLLocationManagerDelegate {
         ])
         Task {
             await TTLog.shared.record([line])
-            await MainActor.run { self.catchUpMotion() }
+            await MainActor.run { self.startTrack(); self.catchUpMotion() }
         }
     }
 
@@ -112,13 +139,16 @@ final class TTSensors: NSObject, CLLocationManagerDelegate {
                 ("lat", String(format: "%.5f", loc.coordinate.latitude)),
                 ("lon", String(format: "%.5f", loc.coordinate.longitude)),
                 ("acc", String(format: "%.0f", loc.horizontalAccuracy)),
+                ("alt", String(format: "%.0f", loc.altitude)),
+                ("vacc", String(format: "%.0f", loc.verticalAccuracy)),
                 ("speed", String(format: "%.1f", loc.speed)),
                 ("course", String(format: "%.0f", loc.course)),
             ])
         }
         Task {
-            await TTLog.shared.record(lines)
-            await MainActor.run { self.catchUpMotion() }
+            // A track fix every ~20 m: queue it, upload at most once a minute.
+            await TTLog.shared.record(lines, uploadNow: false)
+            await MainActor.run { self.startTrack(); self.catchUpMotion() }
         }
     }
 

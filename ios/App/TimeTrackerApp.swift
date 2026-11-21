@@ -70,7 +70,7 @@ struct StatusView: View {
                     Button("Allow location and motion") {
                         TTSensors.shared.requestPermissions()
                     }
-                    Text("Choose \"Allow While Using App\", then \"Change to Always Allow\" when iOS asks again. Always is what lets TimeTracker record places and movement while it's closed.")
+                    Text("Choose \"Allow While Using App\", then \"Change to Always Allow\" when iOS asks again. Always is what lets TimeTracker record your GPS track, places and movement while it's closed.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Safari") {
