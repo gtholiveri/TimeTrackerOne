@@ -19,7 +19,7 @@ reachable only through the relay, and serves the ActivityWatch web UI behind
 your key. It keeps receiving and updating while your laptop is off.
 
 ```
-iPhone shortcuts ──TT Sync──▶  /tt/ingest  ┐
+iPhone (TT app)  ──────────▶  /tt/ingest  ┐
 Safari extension ───────────▶  /tt/safari  ├─▶ relay ─▶ aw-server-rust ─▶ web UI (/)
 you / an agent   ◀──────────── /tt/state   ┘
 ```
@@ -29,7 +29,7 @@ you / an agent   ◀──────────── /tt/state   ┘
 `KEY` is the `TT_KEY` you set. Give it as `?key=`, as a bearer token, or as the
 password of HTTP basic auth (any user name). If you also set `TT_INGEST_KEY`,
 that key works for the two upload endpoints and nothing else. Put it on the
-phone (TT Sync and TT Safari), so a key copied from there can't read your
+phone (TT Watch and TT Safari), so a key copied from there can't read your
 history.
 
 **Read keys, one per agent.** `TT_READ_KEYS` holds named keys that read and

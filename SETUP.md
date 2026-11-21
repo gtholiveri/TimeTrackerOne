@@ -116,7 +116,7 @@ Checks:
 
 ## 5. Get the phone URL to the phone
 
-The phone needs the line `TT Sync and TT Safari: https://<name>.fly.dev/tt/ingest?key=<TT_INGEST_KEY>`
+The phone needs the line `TT Watch and TT Safari: https://<name>.fly.dev/tt/ingest?key=<TT_INGEST_KEY>`
 from `tt-relay-keys.txt`. **(Gabe)**: send it to the phone, by email to
 himself or through a notes app synced to the phone. Show him the line.
 
@@ -131,9 +131,9 @@ installing, paste the URL from step 5 into TT Safari's popup.
 
 **(Gabe)**: follow "Setup" in `shortcuts/README.md` (also in the email "TimeTracker:
 phone setup links"):
-1. Add TT Sync first, paste the URL from step 5, run it once, and choose
-   Always Allow.
-2. Add TT App Opened, TT App Closed and TT Watch.
+1. Install TimeTracker from TestFlight, open it, allow location (Always) and
+   Motion & Fitness.
+2. Add TT Watch (paste the URL from step 5), TT App Opened and TT App Closed.
 3. Create the two automations.
 4. Start TT Watch once.
 

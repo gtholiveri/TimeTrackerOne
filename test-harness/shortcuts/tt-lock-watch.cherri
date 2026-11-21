@@ -16,7 +16,7 @@ as Is Locked says No.
 #define color green
 
 #include 'actions/calendar'
-#include 'tt-actions.cherri'
+#include '../../shortcuts/tt-actions.cherri'
 
 const run = randomNumber(100000, 999999)
 @buffer = []

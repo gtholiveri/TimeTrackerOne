@@ -14,7 +14,7 @@ Claude Code session can do most of it.
   date. Also mirrors the desktop's ActivityWatch into the same place, and
   serves the dashboard ([`server/dashboard`](server/dashboard), at `/app/`).
 - [`shortcuts/`](shortcuts): the iPhone shortcuts (the watcher, the open/close
-  loggers and TT Sync), written in Cherri and published by CI.
+  loggers and the TimeTracker app), written in Cherri and published by CI.
 - [`safari-extension/`](safari-extension) and [`ios/`](ios): TT Safari and the
   app that carries it.
 

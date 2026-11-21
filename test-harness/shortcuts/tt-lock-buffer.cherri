@@ -15,7 +15,7 @@ file, locked ones included. A tick whose Is Locked read failed shows up as
 #define color red
 
 #include 'actions/calendar'
-#include 'tt-actions.cherri'
+#include '../../shortcuts/tt-actions.cherri'
 
 const run = randomNumber(100000, 999999)
 @buffer = []

@@ -10,7 +10,7 @@ problem, not Is Locked. Appends to tt-lockdirect.txt for about 4 minutes:
 #define color orange
 
 #include 'actions/calendar'
-#include 'tt-actions.cherri'
+#include '../../shortcuts/tt-actions.cherri'
 
 const run = randomNumber(100000, 999999)
 

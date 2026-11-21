@@ -12,7 +12,7 @@ test-harness/analyze.py reads them.
 #define color blue
 
 #include 'actions/calendar'
-#include 'tt-actions.cherri'
+#include '../../shortcuts/tt-actions.cherri'
 
 const run = randomNumber(100000, 999999)
 

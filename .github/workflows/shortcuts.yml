@@ -1,6 +1,6 @@
 name: Shortcuts
 
-# Compiles the test shortcuts in shortcuts/*.cherri with the Cherri compiler,
+# Compiles the tracker shortcuts in shortcuts/*.cherri with the Cherri compiler,
 # which signs them through RoutineHub's HubSign service (iOS only imports
 # signed shortcuts), and publishes them on the "shortcuts" pre-release:
 #   https://github.com/<owner>/<repo>/releases/download/shortcuts/<Name>.shortcut
@@ -67,6 +67,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view shortcuts >/dev/null 2>&1 || \
-            gh release create shortcuts --title "Test shortcuts" --prerelease \
+            gh release create shortcuts --title "Shortcuts" --prerelease \
               --notes "Open a .shortcut link on the iPhone to add it to Shortcuts."
           gh release upload shortcuts out/*.shortcut --clobber
+          # Only what this build made: drop assets of retired shortcuts.
+          for a in $(gh release view shortcuts --json assets -q '.assets[].name'); do
+            [ -e "out/$a" ] || gh release delete-asset shortcuts "$a" -y
+          done

@@ -73,9 +73,9 @@ error banner offline. The app also records, with the app closed
   from the motion coprocessor's 7-day history whenever the app runs.
 Fusion doesn't use these yet; they're stored raw.
 
-**TT Sync** now only hands the app the relay URL (from its import question)
-and the device name, and flushes the queue. Before the app it uploaded the log
-files itself and failed without network.
+That's the whole phone setup: TT Watch, TT App Opened, TT App Closed and the
+app. TT Sync and the Trial 1/2 test shortcuts are retired
+(`test-harness/shortcuts/`).
 
 **Line format:** `tt|src=ios|kind=change|dev=...|ts=...|locked=No|cur=Safari`.
 These are key=value pairs, not JSON, because Cherri reads `{...}` in strings as

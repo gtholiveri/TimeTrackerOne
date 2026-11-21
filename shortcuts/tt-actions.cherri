@@ -40,12 +40,3 @@ action 'com.gtholiveri.timetracker.LogLinesIntent' logLines(text lines: 'lines',
         "TeamIdentifier": "3SC4668U86"
     }
 }
-
-action 'com.gtholiveri.timetracker.SyncNowIntent' syncTimeTracker(text device: 'device', text relay: 'relay') {
-    "AppIntentDescriptor": {
-        "AppIntentIdentifier": "SyncNowIntent",
-        "BundleIdentifier": "com.gtholiveri.timetracker",
-        "Name": "TimeTracker",
-        "TeamIdentifier": "3SC4668U86"
-    }
-}
