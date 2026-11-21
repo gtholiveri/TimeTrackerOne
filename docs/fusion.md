@@ -167,12 +167,9 @@ each upload, and every 20 s:
 - **The watcher isn't always running.** iOS eventually stops it, and how to
   relaunch it is still open. Without it, unlocking back into the same
   app is invisible, so that time counts as locked until the next app switch.
-- **TT Sync needs the network.** Offline, the lines stay on the phone and go
-  up with the next sync that works. The relay asks for whole files when it
-  notices a gap. A failing TT Sync stops whatever ran it, which can stop TT
-  Watch.
-- **One phone per iCloud account.** The log files live in iCloud Drive >
-  Shortcuts, which an iPad on the same account shares. An iPad would need its
-  own file names.
+- **Offline** the lines wait in the TimeTracker app's queue and go up with
+  the next upload that works; nothing on the phone fails.
+- **One device name per phone.** Lines carry the name Shortcuts reports
+  (TT Watch hands it to the app), so an iPad shows up as its own device.
 - **Picture-in-picture and audio in the background** count as the app that
   was in front, not the one playing.

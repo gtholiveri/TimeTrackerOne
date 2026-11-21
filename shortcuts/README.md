@@ -58,12 +58,12 @@ The retired experiments are in [`test-harness/shortcuts/`](../test-harness/short
 - Cherri reads `{...}` inside strings as variables, so the lines are key=value
   pairs, not JSON.
 - Cherri only gives an action an ID (UUID) when its output is used, but iOS
-  seems to remember "Always Allow" per action ID. So every file write captures
-  its output (`const written1 = appendLine(...)`), and CI compiles with
+  seems to remember "Always Allow" per action ID. So every app action captures
+  its output (`const logged = logLines(...)`), and CI compiles with
   `--derive-uuids` so the IDs stay the same across rebuilds.
 - The "Nothing" actions in the compiled shortcuts are Cherri's: they stop one
   action's output from flowing into the next as unintended input. Harmless.
-- Join a list before writing it (`joinText`): Append to Text File given a list
+- Join a list before handing it on (`joinText`): Append to Text File given a list
   asks "Choose an item" and writes only the one you pick. Pass the separator
   explicitly; `joinText(@list)` crashes the pinned Cherri.
 - iOS names an imported shortcut after its file, and CI turns the spaces in

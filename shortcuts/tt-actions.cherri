@@ -11,7 +11,8 @@ action 'getcurrentapp' currentApp(text scope: 'WFVisibleAppScope')
 // Get Device Details, e.g. "Device Is Locked" or "Current Brightness".
 action 'getdevicedetails' deviceDetail(text detail: 'WFDeviceDetail')
 
-// Append to Text File in the Shortcuts folder (iCloud Drive > Shortcuts),
+// Append to Text File in the Shortcuts folder (iCloud Drive > Shortcuts). Only
+// the retired tests in test-harness/shortcuts use it; the tracker writes no files.
 // with Make New Line on.
 action 'file.append' appendLine(text filePath: 'WFFilePath', text line: 'WFInput') {
     "WFAppendFileWriteMode": "Append",
