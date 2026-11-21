@@ -270,6 +270,34 @@ fly secrets set TT_LLM_KEYLESS=1                            # also the no-sign-u
 
 The relay prints the chain it will use when it starts.
 
+## WHOOP
+
+The relay can pull everything from WHOOP's API and keep it current: cycles
+(strain, heart rate), recoveries (recovery score, HRV, resting heart rate,
+SpO2, skin temperature), sleeps (stages, performance, need) and workouts, plus
+the profile and body measurements. Records are kept whole, as WHOOP sends
+them, in `whoop.db` next to the other databases (`ttserver/whoop.py`).
+
+1. Sign in at <https://developer-dashboard.whoop.com> with your WHOOP account,
+   create a team if asked, then **Create App**. Name it anything, tick every
+   scope (read:recovery, read:cycles, read:workout, read:sleep, read:profile,
+   read:body_measurement), and set the redirect URL to
+   `https://<your relay>/tt/whoop/callback`.
+2. Give the relay the app's client ID and secret:
+   ```
+   fly secrets set TT_WHOOP_CLIENT_ID=... TT_WHOOP_CLIENT_SECRET=...
+   ```
+3. Open `https://<your relay>/tt/whoop/connect?key=<TT_KEY>` in a browser and
+   allow access. The first sync backfills your whole history (a few minutes),
+   then it syncs every 15 minutes, re-reading the last 3 days because scores
+   land late.
+4. Check `https://<your relay>/tt/whoop/status?key=<TT_KEY>`. The records:
+   `/tt/whoop?key=<KEY>&kind=sleep&days=7` (kind is cycle, recovery, sleep,
+   workout, profile or body; leave it out for all). Read keys work for these.
+
+If the relay sits behind a proxy that rewrites `Host`, set `TT_PUBLIC_URL` to
+its public address so the redirect URL matches.
+
 ## Tests
 
 Standard library only, no installs:

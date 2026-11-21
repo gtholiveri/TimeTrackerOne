@@ -28,6 +28,12 @@ revokes it alone:
         Body: {"blocks": [{"id", "items": [{"subject", "app", "title", "seconds",
         "category"}]}]}. Answers {"labels": {id: label}, "model": ...}, labels
         written by a free LLM API and cached (labels.py).
+    GET  /tt/whoop/connect?key=KEY
+        Sends you to WHOOP to sign in; WHOOP comes back to /tt/whoop/callback
+        and the relay starts pulling everything (whoop.py).
+    GET  /tt/whoop?key=KEY[&kind=cycle|recovery|sleep|workout|profile|body][&days=N]
+        The WHOOP records, whole, oldest first. /tt/whoop/status: counts and
+        the last sync.
     GET  /tt/health
     GET  /app/
         The dashboard (server/dashboard, built into dashboard/dist).
@@ -52,6 +58,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import activity, awsync
+from .whoop import Whoop
 from .fusion import fuse
 from .labels import Labeler
 from .lines import parse_line, to_record
@@ -170,7 +177,8 @@ def _iv(iv) -> dict:
 
 def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, ingest_key: str | None = None,
                  dashboard: str = DASHBOARD, labeler: Labeler | None = None,
-                 read_keys: dict[str, str] | None = None):
+                 read_keys: dict[str, str] | None = None, whoop: Whoop | None = None,
+                 public_url: str | None = None):
     aw = urllib.parse.urlsplit(aw_url)
     dashboard_root = os.path.realpath(dashboard)
 
@@ -254,6 +262,38 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
             cache = "public, max-age=31536000, immutable" if rel.startswith("assets/") else "no-cache"
             return self.send(200, data, ctype, extra={"Cache-Control": cache})
 
+        def whoop_route(self, path: str):
+            if whoop is None:
+                return self.send(404, "WHOOP is not set up: set TT_WHOOP_CLIENT_ID and TT_WHOOP_CLIENT_SECRET\n")
+            q = self.query()
+            redirect = (public_url or f"https://{self.headers.get('Host')}").rstrip("/") + "/tt/whoop/callback"
+            if path == "/tt/whoop/callback":
+                # WHOOP sends the browser here; the signed state stands in for the key.
+                if not whoop.state_ok(q.get("state", "")):
+                    return self.send(403, "bad state\n")
+                if q.get("error"):
+                    return self.send(400, f"WHOOP said: {q.get('error')} {q.get('error_description', '')}\n")
+                try:
+                    whoop.connect(q.get("code", ""), redirect)
+                except Exception as e:
+                    return self.send(502, f"WHOOP token exchange failed: {e}\n")
+                return self.send(200, "WHOOP connected. The relay is pulling your data now; "
+                                      "/tt/whoop/status shows how far it got.\n")
+            if path == "/tt/whoop/connect":
+                if not self.authorized():
+                    return self.challenge()
+                return self.send(302, "", extra={"Location": whoop.auth_url(redirect)})
+            if not self.authorized(read=True):
+                return self.challenge()
+            if path == "/tt/whoop/status":
+                return self.send(200, whoop.status())
+            if path == "/tt/whoop":
+                since = None
+                if q.get("days"):
+                    since = datetime.now(timezone.utc) - timedelta(days=float(q["days"]))
+                return self.send(200, whoop.records(q.get("kind"), since))
+            return self.send(404, "not found\n")
+
         # ------------------------------------------------------------ routes
 
         def do_OPTIONS(self):
@@ -287,6 +327,8 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                     return self.send(400, f"{e}\n")
                 except Exception as e:
                     return self.send(502, f"{type(e).__name__}: {e}\n")
+            if path.startswith("/tt/whoop"):
+                return self.whoop_route(path)
             if path == "/tt/lines":
                 if not self.authorized(read=True):
                     return self.challenge()
@@ -468,8 +510,14 @@ def main(argv=None) -> None:
         sys.exit(str(e))
     dashboard = os.environ.get("TT_DASHBOARD") or DASHBOARD
     labeler = Labeler(os.path.join(data, "labels.db"), log=log)
+    whoop = None
+    if os.environ.get("TT_WHOOP_CLIENT_ID") and os.environ.get("TT_WHOOP_CLIENT_SECRET"):
+        whoop = Whoop(os.path.join(data, "whoop.db"), os.environ["TT_WHOOP_CLIENT_ID"],
+                      os.environ["TT_WHOOP_CLIENT_SECRET"], key, log=log)
+        threading.Thread(target=whoop.run_forever, daemon=True).start()
     server = ThreadingHTTPServer((host, port), make_handler(relay, key, aw_url, aw_api_key, ingest_key, dashboard,
-                                                            labeler, read_keys))
+                                                            labeler, read_keys, whoop,
+                                                            os.environ.get("TT_PUBLIC_URL")))
     log(f"tt-relay listening on {host}:{port}, ActivityWatch at {aw_url}, data in {data}")
     log("block labels from:", ", ".join(f"{p.name}/{p.model}" for p in labeler.chain) or "nobody (none configured)")
     try:
