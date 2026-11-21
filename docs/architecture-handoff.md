@@ -33,12 +33,13 @@ REST API. Our relay is one more watcher, for the phone.
 ```
  iPhone                                        Fly.io (always on)                Laptop
  ──────                                        ──────────────────                ──────
- TT Watch (loop)      ─┐  log files in         relay (server/ttserver)           ActivityWatch (local)
- TT App Opened/Closed ─┤  iCloud Drive >  ──▶  · stores raw lines (SQLite)  ◀──  window / AFK / Chrome
- (personal automations)│  Shortcuts            · fuses them (fusion.py)          watchers, as usual
-                       └─ TT Sync  ──HTTPS──▶  · writes ActivityWatch buckets       │
- TT Safari (extension) ───────────HTTPS──▶     · /tt/state live feed             mirror.py copies local
-                                               · ActivityWatch web UI ◀────────  buckets every minute
+ TT Watch (loop)      ─┐ app actions           relay (server/ttserver)           ActivityWatch (local)
+ TT App Opened/Closed ─┤ (never fail)          · stores raw lines (SQLite)  ◀──  window / AFK / Chrome
+ (personal automations)▼                       · fuses them (fusion.py)          watchers, as usual
+ TimeTracker app: queue ───────HTTPS──▶        · writes ActivityWatch buckets       │
+   + location, motion                          · /tt/state live feed             mirror.py copies local
+ TT Safari (extension) ───────────HTTPS──▶     · ActivityWatch web UI ◀────────  buckets every minute
+                                               · pulls WHOOP (whoop.py) ◀── WHOOP API
                                                aw-server-rust (same container)
 ```
 
@@ -51,27 +52,30 @@ REST API. Our relay is one more watcher, for the phone.
 - writes to `tt-watch-<date>.txt` in iCloud Drive > Shortcuts.
 
 While the phone is locked it writes nothing: lines wait in memory and are
-written right after the unlock, each with its own timestamp. After writing a
-locked stretch it uploads its file itself, because unlocking straight back
-into the same app fires no automation. It doesn't run TT Sync for this: both
-runs that died on its first day died at an unlock where an automation's TT
-Sync ran in the same second (`findings.md`). It only uploads with a Wi-Fi
-network or some signal, since a failed request would stop the loop. It
-loops until iOS stops it.
+written right after the unlock, each with its own timestamp, and handed to
+the TimeTracker app (Log TT Lines) in the same step, so the relay hears about
+an unlock even when it fires no automation. It loops until iOS stops it.
 
 **TT App Opened / TT App Closed** are run by two personal automations (any
-app, Is Opened / Is Closed, Run Immediately). Each:
-- appends one line to `tt-events-<date>.txt`, with the app the automation
-  passed in;
-- then runs TT Sync.
-
+app, Is Opened / Is Closed, Run Immediately). Each hands one line, with the
+app the automation passed in, to the TimeTracker app (Log App Event).
 Locking the phone fires a close; unlocking fires nothing.
 
-**TT Sync** uploads, for each of today's two files, the last 20 lines plus the
-file's line count. The relay answers `full` if it is missing earlier lines
-(first sync of the day, or after time offline), and TT Sync then sends the
-whole file. Duplicates are harmless; the relay drops them. The relay URL and
-key come from an import question, answered when the shortcut is added.
+**The TimeTracker app** (`ios/App/`, since 2026-11-21) owns the phone's
+network traffic. Its Shortcuts actions (`TTIntents.swift`) append lines to a
+queue file in the app's container (`TTLog.swift`, writable while locked after
+the first unlock) and try an upload to `/tt/ingest`; a failed upload leaves
+the lines queued for the next one. They never throw, so nothing shows an
+error banner offline. The app also records, with the app closed
+(`TTSensors.swift`, needs Location "Always"):
+- `kind=visit` (arrive, depart, lat, lon) and `kind=loc` (a fix every ~500 m);
+- `kind=motion` (stationary, walking, running, cycling, automotive), read
+  from the motion coprocessor's 7-day history whenever the app runs.
+Fusion doesn't use these yet; they're stored raw.
+
+**TT Sync** now only hands the app the relay URL (from its import question)
+and the device name, and flushes the queue. Before the app it uploaded the log
+files itself and failed without network.
 
 **Line format:** `tt|src=ios|kind=change|dev=...|ts=...|locked=No|cur=Safari`.
 These are key=value pairs, not JSON, because Cherri reads `{...}` in strings as
@@ -238,10 +242,10 @@ written), and the dashboard.
     TT Watch does while one is already running;
   - TT App Opened launching it when the relay reports the watcher dead.
     "Run Shortcut" waits for the child to finish, which complicates this.
-- **Offline.** TT Sync errors without network, and so does whatever ran it,
-  so the automations show error banners offline. TT Watch skips its upload
-  without Wi-Fi or signal and keeps going (Wi-Fi without internet still stops
-  it). Nothing is lost.
+- **Offline** is handled by the app's queue since 2026-11-21 (not yet
+  proven on the phone).
+- **Location, motion and WHOOP in fusion.** Stored raw; not used by
+  fusion.py or the dashboard yet.
 - **Home Screen vs. locked** is a guess wherever the watcher has no data.
 - **iPad.** iCloud Drive > Shortcuts is shared across devices on one Apple ID,
   so an iPad would need its own file names.
