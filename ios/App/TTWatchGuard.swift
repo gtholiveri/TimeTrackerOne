@@ -95,10 +95,7 @@ enum TTWatchGuard {
     /// Called by the open/close actions. True when the automation should run TT Watch.
     static func needsStart() async -> Bool {
         let now = Date()
-        lock.lock()
-        let prev = lastInUse
-        defaults.set(now, forKey: "watchLastInUse")
-        lock.unlock()
+        let prev = markInUse(now)
 
         if !lastEnded && lastHeard != nil {
             // The second of a close/open pair: the first one decides.
@@ -108,6 +105,15 @@ enum TTWatchGuard {
             if heardSince(prev) { return false }
         }
         return claimStart(now)
+    }
+
+    /// Records this automation run; returns the one before it.
+    private static func markInUse(_ now: Date) -> Date? {
+        lock.withLock {
+            let prev = lastInUse
+            defaults.set(now, forKey: "watchLastInUse")
+            return prev
+        }
     }
 
     private static func heardSince(_ t: Date) -> Bool {
