@@ -3,7 +3,8 @@ up to date. Also serves the ActivityWatch web UI behind the same key.
 
 Endpoints (KEY is TT_KEY; pass it as ?key=, a bearer token, or the password
 of HTTP basic auth). TT_INGEST_KEY, if set, works for the two POST endpoints
-only, so the key stored on the phone can't read anything back. Read keys
+and as a read key named "phone" (the app's data viewer reads with the key it
+already has), but never for writes, the web UI or the dashboard. Read keys
 (TT_READ_KEYS="muse:KEY1,hermes:KEY2", one per agent) read and change
 nothing: the GET endpoints below and ActivityWatch's read API (GET /api/0/...,
 POST /api/0/query/). Each is logged by its name; dropping one from the list
@@ -18,8 +19,12 @@ revokes it alone:
         Body: the Safari extension's records, a JSON array or one per line.
     GET  /tt/state?key=KEY[&hours=6]
         The fused timeline per device, newest last, with the live state.
-    GET  /tt/lines?key=KEY&source=ios|safari[&hours=24]
-        The raw lines received, oldest first, for debugging.
+    GET  /tt/lines?key=KEY&source=ios|safari[&hours=24|&start=..[&end=..]][&kinds=loc,visit]
+        The raw lines received, oldest first: the last `hours`, or from start
+        to end (ISO times with an offset), optionally only some kinds.
+    GET  /tt/coverage?key=KEY[&days=7][&tz=..]
+        What arrived per local day (counts per kind, devices) and every TT
+        Watch run with its first and last line (coverage.py).
     GET  /tt/activity?key=KEY[&days=1|&start=..&end=..][&view=attention|devices][&format=csv][&tz=..]
         Categorized activity segments, the dashboard's pipeline (activity.py).
     GET  /tt/summary?key=KEY[&days=7|&start=..&end=..][&tz=..]
@@ -60,11 +65,11 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import activity, awsync, mcp
+from . import activity, awsync, coverage, mcp
 from .whoop import Whoop
 from .fusion import fuse
 from .labels import Labeler
-from .lines import parse_line, to_record
+from .lines import parse_line, parse_ts, to_record
 from .store import GENERIC_DEVICES, Store, iso_utc
 from .web import web_segments
 
@@ -203,8 +208,9 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
             return {k: v[-1] for k, v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
 
         def authorized(self, ingest: bool = False, read: bool = False) -> bool:
-            """The full key opens everything; the ingest key (if set) only the upload
-            endpoints; the read key (if set) only what reads and changes nothing."""
+            """The full key opens everything; the ingest key (if set) the upload
+            endpoints and what a read key opens; a read key only what reads and
+            changes nothing."""
             supplied = self.query().get("key")
             path = urllib.parse.urlsplit(self.path).path
             if path.startswith("/mcp/"):
@@ -223,6 +229,9 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
             keys = [key] + ([ingest_key] if ingest and ingest_key else [])
             if any(hmac.compare_digest(supplied.encode(), k.encode()) for k in keys):
                 return True
+            if ingest_key and hmac.compare_digest(supplied.encode(), ingest_key.encode()):
+                self.agent = "phone"  # the app's data viewer reads with the key it uploads with
+                return read
             for name, k in (read_keys or {}).items():
                 if hmac.compare_digest(supplied.encode(), k.encode()):
                     self.agent = name  # shown in the log, even when refused
@@ -355,12 +364,30 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                 return self.whoop_route(path)
             if path == "/mcp" or path.startswith("/mcp/"):
                 return self.send(405, "POST only (stateless MCP, no SSE stream)\n", extra={"Allow": "POST"})
+            if path == "/tt/coverage":
+                if not self.authorized(read=True):
+                    return self.challenge()
+                q = self.query()
+                try:
+                    return self.send(200, coverage.coverage(relay.store, min(float(q.get("days", 7)), 90),
+                                                            q.get("tz") or "America/Los_Angeles"))
+                except ValueError as e:
+                    return self.send(400, f"{e}\n")
             if path == "/tt/lines":
                 if not self.authorized(read=True):
                     return self.challenge()
                 q = self.query()
-                since = datetime.now(timezone.utc) - timedelta(hours=float(q.get("hours", 24)))
-                return self.send(200, "".join(r + "\n" for r in relay.store.raw(q.get("source", "ios"), since)))
+                since = parse_ts(q.get("start")) or datetime.now(timezone.utc) - timedelta(hours=float(q.get("hours", 24)))
+                until = iso_utc(parse_ts(q["end"])) if parse_ts(q.get("end")) else None
+                kinds = {k for k in q.get("kinds", "").split(",") if k}
+                out = []
+                for _, ts, raw, _ in relay.store.rows(q.get("source", "ios"), since):
+                    if until and ts >= until:
+                        break
+                    if kinds and (parse_line(raw) or {}).get("kind") not in kinds:
+                        continue
+                    out.append(raw + "\n")
+                return self.send(200, "".join(out))
             if path == "/app":
                 return self.send(301, "", extra={"Location": "/app/"})
             if path.startswith("/app/"):

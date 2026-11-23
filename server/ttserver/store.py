@@ -125,6 +125,12 @@ class Store:
                 out.append((d, parsed))
         return out
 
+    def rows(self, source: str, since: datetime) -> list[tuple[str | None, str, str, float]]:
+        """(device, UTC ts, raw line, received epoch) for each line since `since`, oldest first."""
+        with self.lock:
+            return self.db.execute("SELECT dev, ts, raw, received FROM lines WHERE source = ? AND ts >= ? "
+                                   "ORDER BY ts", (source, iso_utc(since))).fetchall()
+
     def raw(self, source: str, since: datetime) -> list[str]:
         with self.lock:
             rows = self.db.execute("SELECT raw FROM lines WHERE source = ? AND ts >= ? ORDER BY ts",

@@ -126,8 +126,9 @@ and restarts it if it exits. In order:
    - Everything else: the ActivityWatch web UI and API, behind HTTP basic
      auth.
 
-   `TT_KEY` opens everything. `TT_INGEST_KEY` only opens the two uploads, and
-   is the one stored on the phone.
+   `TT_KEY` opens everything. `TT_INGEST_KEY` opens the two uploads and the
+   reads (logged as `phone`, for the app's data viewer), never writes or the
+   web UI, and is the one stored on the phone.
 
 ### The desktop
 

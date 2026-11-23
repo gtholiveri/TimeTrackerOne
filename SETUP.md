@@ -11,8 +11,8 @@ or type, and wait.
 Ground rules:
 - Use PowerShell. Use `curl.exe` (not the `curl` alias) for HTTP checks.
 - The keys end up in `C:\Users\gabeo\tt-relay-keys.txt`. Never copy them into
-  the repo or a commit. `TT_KEY` opens all the data; `TT_INGEST_KEY` only
-  uploads.
+  the repo or a commit. `TT_KEY` opens all the data; `TT_INGEST_KEY` uploads
+  and reads (the phone app's data viewer).
 - Long commands (`fly deploy`, the first mirror pass) can take several
   minutes. Give them a long timeout instead of cancelling them.
 - If something fails, read the error, fix the cause, and carry on from that

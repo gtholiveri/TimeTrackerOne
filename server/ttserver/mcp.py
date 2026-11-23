@@ -7,13 +7,15 @@ take a URL (Claude.ai custom connectors). Read keys work; nothing here writes.
 
 Tools cover all of it: the fused live state, the categorized activity and
 daily totals (laptop + phone + Safari, via ActivityWatch), the raw phone
-lines, the location track and visits, motion, and WHOOP.
+lines, the location track and visits, motion, WHOOP, and what arrived when.
 """
 
 from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+
+from . import coverage
 
 PROTOCOL = "2025-06-18"
 
@@ -35,6 +37,10 @@ def _tool(name, description, props=None, required=None):
 TOOLS = [
     _tool("get_live_state", "What Gabe is doing right now on each device (app, locked, page), with the "
           "fused phone timeline for the last few hours.", {"hours": {"type": "number", "description": "Default 6."}}),
+    _tool("get_coverage", "What the relay received per day (phone line counts by kind, Safari, devices) and "
+          "every TT Watch run with its first and last line. Use it to check the trackers are alive.",
+          {"days": {"type": "number", "description": "How many days back (default 7)."},
+           "tz": _RANGE["tz"]}),
     _tool("get_daily_summary", "Per-day totals across laptop, phone and Safari: time by category, rating, app "
           "and site, plus unlock counts. The cheapest way to look at days and weeks.",
           {**_RANGE, "top": {"type": "integer", "description": "How many top apps/sites per day (default 10)."}}),
@@ -82,6 +88,9 @@ def _phone_lines(relay, args, kinds: set[str], default_hours=24) -> list[dict]:
 def call(relay, whoop, name: str, args: dict, state_json, activity_mod):
     if name == "get_live_state":
         return state_json(relay, float(args.get("hours") or 6))
+    if name == "get_coverage":
+        return coverage.coverage(relay.store, min(float(args.get("days") or 7), 90),
+                                 args.get("tz") or "America/Los_Angeles")
     if name in ("get_daily_summary", "get_activity"):
         if relay.aw is None:
             raise ValueError("ActivityWatch isn't connected on the relay")

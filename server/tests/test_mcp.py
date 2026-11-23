@@ -57,7 +57,7 @@ class MCP(unittest.TestCase):
                                  {"Authorization": f"Bearer {READ}"})
         names = {t["name"] for t in json.loads(body)["result"]["tools"]}
         self.assertTrue({"get_live_state", "get_daily_summary", "get_activity", "get_location",
-                         "get_motion", "get_whoop", "get_raw_lines"} <= names)
+                         "get_motion", "get_whoop", "get_raw_lines", "get_coverage"} <= names)
         self.assertNotIn(READ, out.getvalue())
 
     def test_bad_key(self):
@@ -72,6 +72,8 @@ class MCP(unittest.TestCase):
         raw = json.loads(self.call("get_raw_lines", hours=1e7, kinds=["open"])["content"][0]["text"])
         self.assertEqual(len(raw), 1)
         self.assertTrue(self.call("get_whoop")["isError"])  # not configured here
+        cov = json.loads(self.call("get_coverage", days=1)["content"][0]["text"])
+        self.assertEqual(cov["days"][0]["ios"], {"loc": 1, "motion": 1, "open": 1})
 
 
 if __name__ == "__main__":

@@ -130,11 +130,12 @@ class ReadKey(unittest.TestCase):
     FULL = "full-key-0123456789abcdef"
     READ = "read-key-0123456789abcdef"
     OTHER = "other-key-0123456789abcdef"
+    INGEST = "ingest-key-0123456789abcdef"
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         relay = Relay(Store(str(Path(self.tmp.name) / "tt.db")), None)
-        handler = make_handler(relay, self.FULL, "http://127.0.0.1:9", None,
+        handler = make_handler(relay, self.FULL, "http://127.0.0.1:9", None, self.INGEST,
                                read_keys={"muse": self.READ, "hermes": self.OTHER})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
@@ -167,6 +168,15 @@ class ReadKey(unittest.TestCase):
         self.assertEqual(self.call("DELETE", "/api/0/buckets/x", self.FULL), 502)
         self.assertEqual(self.call("GET", "/tt/state", self.OTHER), 200)
         self.assertEqual(self.call("GET", "/tt/state", "not-a-key-0123456789"), 401)
+
+    def test_ingest_key_also_reads(self):
+        # The phone's key: uploads, plus what a read key opens (the app's data viewer).
+        self.assertEqual(self.call("POST", "/tt/ingest", self.INGEST, b""), 200)
+        self.assertEqual(self.call("GET", "/tt/state", self.INGEST), 200)
+        self.assertEqual(self.call("GET", "/tt/lines?hours=48", self.INGEST), 200)
+        self.assertEqual(self.call("GET", "/api/0/buckets/", self.INGEST), 502)
+        for method, path in [("DELETE", "/api/0/buckets/x"), ("GET", "/"), ("GET", "/app/"), ("POST", "/tt/labels")]:
+            self.assertEqual(self.call(method, path, self.INGEST, b"{}"), 401, (method, path))
 
     def test_parse_read_keys(self):
         self.assertEqual(parse_read_keys(" muse:abcdefabcdefabcdef , hermes:0123456789abcdef0 "),

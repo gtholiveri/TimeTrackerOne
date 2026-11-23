@@ -62,6 +62,7 @@ Streamable HTTP, stateless, JSON answers. Tools, all read-only:
 | `get_motion` | Phone motion changes: stationary, walking, running, cycling, automotive |
 | `get_whoop` | WHOOP cycles, recoveries, sleeps, workouts, profile, body, as WHOOP sends them |
 | `get_raw_lines` | Every raw line received, filterable by kind |
+| `get_coverage` | What arrived per day (phone kinds, Safari, devices) and every TT Watch run; checks the trackers are alive |
 
 The HTTP endpoints below return the same data.
 
