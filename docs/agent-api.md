@@ -62,6 +62,8 @@ Streamable HTTP, stateless, JSON answers. Tools, all read-only:
 | `get_motion` | Phone motion changes: stationary, walking, running, cycling, automotive |
 | `get_whoop` | WHOOP cycles, recoveries, sleeps, workouts, profile, body, as WHOOP sends them |
 | `get_raw_lines` | Every raw line received, filterable by kind |
+| `get_claude_blocks` | Every stretch in Claude with the sessions, what was typed, and a blunt label, summary and kind |
+| `get_claude_messages` | Claude messages (yours and Claude's) in time order, from every surface |
 | `get_coverage` | What arrived per day (phone kinds, Safari, devices) and every TT Watch run; checks the trackers are alive |
 
 The HTTP endpoints below return the same data.

@@ -21,6 +21,14 @@ revokes it alone:
     GET  /tt/lines?key=KEY&source=ios|safari[&hours=24|&start=..[&end=..]][&kinds=loc,visit]
         The raw lines received, oldest first: the last `hours`, or from start
         to end (ISO times with an offset), optionally only some kinds.
+    POST /tt/claude?key=KEY
+        Body: a JSON array of Claude messages {ts, surface, session, title, who
+        (you|claude), text}, from the laptop's claude-sync job (claudelog.py).
+    GET  /tt/claude?key=KEY[&hours=24|&start=..&end=..][&who=you]
+        Those messages, oldest first.
+    GET  /tt/claude/blocks?key=KEY[&days=1|&start=..&end=..][&tz=..]
+        Every stretch spent in Claude with the sessions, what was typed, and a
+        label, summary and kind of what was actually going on.
     GET  /tt/coverage?key=KEY[&days=7][&tz=..]
         What arrived per local day (counts per kind, devices) and every TT
         Watch run with its first and last line (coverage.py).
@@ -64,7 +72,7 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import activity, awsync, coverage, mcp
+from . import activity, awsync, claudelog, coverage, mcp
 from .whoop import Whoop
 from .fusion import fuse
 from .labels import Labeler
@@ -287,7 +295,7 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                                        "error": {"code": -32700, "message": "parse error"}})
             batch = message if isinstance(message, list) else [message]
             replies = [r for m in batch if isinstance(m, dict)
-                       if (r := mcp.handle(m, relay, whoop, state_json, activity)) is not None]
+                       if (r := mcp.handle(m, relay, whoop, state_json, activity, labeler)) is not None]
             if not replies:
                 return self.send(202, b"")
             return self.send(200, replies if isinstance(message, list) else replies[0])
@@ -361,6 +369,20 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                 return self.whoop_route(path)
             if path == "/mcp" or path.startswith("/mcp/"):
                 return self.send(405, "POST only (stateless MCP, no SSE stream)\n", extra={"Allow": "POST"})
+            if path in ("/tt/claude", "/tt/claude/blocks"):
+                if not self.authorized(read=True):
+                    return self.challenge()
+                q = self.query()
+                try:
+                    if path == "/tt/claude":
+                        end = parse_ts(q.get("end")) or datetime.now(timezone.utc)
+                        start = parse_ts(q.get("start")) or end - timedelta(hours=float(q.get("hours", 24)))
+                        return self.send(200, claudelog.events(relay.store, start, end, q.get("who")))
+                    if relay.aw is None:
+                        return self.send(503, "no ActivityWatch\n")
+                    return self.send(200, claudelog.blocks(relay.aw, relay.store, labeler, q))
+                except ValueError as e:
+                    return self.send(400, f"{e}\n")
             if path == "/tt/coverage":
                 if not self.authorized(read=True):
                     return self.challenge()
@@ -407,6 +429,13 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                 return self.send(200, ingest_safari(relay, self.query(), body))
             if path == "/mcp" or path.startswith("/mcp/"):
                 return self.mcp_route(path)
+            if path == "/tt/claude":
+                if not self.authorized():
+                    return self.send(401, "bad key\n")
+                try:
+                    return self.send(200, claudelog.ingest(relay.store, self.body().decode("utf-8", "replace")))
+                except ValueError as e:
+                    return self.send(400, f"{e}\n")
             if path == "/tt/labels":
                 if not self.authorized():
                     self.close_connection = True  # the unread body would be taken for the next request

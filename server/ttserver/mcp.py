@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 
-from . import coverage
+from . import claudelog, coverage
 
 PROTOCOL = "2025-06-18"
 
@@ -48,6 +48,12 @@ TOOLS = [
           "long, on which device). view=attention merges devices into one line; view=devices keeps them apart.",
           {**_RANGE, "view": {"type": "string", "enum": ["attention", "devices"]},
            "min_seconds": {"type": "number", "description": "Drop segments shorter than this."}}),
+    _tool("get_claude_blocks", "Every stretch Gabe spent in Claude (desktop, claude.ai, Claude Code, phone) with "
+          "the sessions, what he typed, and a blunt label, summary and kind of what he was actually doing.",
+          {**_RANGE}),
+    _tool("get_claude_messages", "Gabe's Claude messages (and Claude's replies) in time order, from every "
+          "surface the laptop's Claude login sees.",
+          {**_HOURS, "who": {"type": "string", "enum": ["you", "claude"], "description": "Only one side."}}),
     _tool("get_location", "The phone's location: GPS track points (lat, lon, accuracy m, altitude, speed m/s, "
           "course) and visits (arrive, depart, lat, lon), oldest first. Raw coordinates, not snapped.", _HOURS),
     _tool("get_motion", "The phone's motion activity changes (stationary, walking, running, cycling, "
@@ -85,9 +91,16 @@ def _phone_lines(relay, args, kinds: set[str], default_hours=24) -> list[dict]:
     return out
 
 
-def call(relay, whoop, name: str, args: dict, state_json, activity_mod):
+def call(relay, whoop, name: str, args: dict, state_json, activity_mod, labeler=None):
     if name == "get_live_state":
         return state_json(relay, float(args.get("hours") or 6))
+    if name == "get_claude_blocks":
+        if relay.aw is None:
+            raise ValueError("ActivityWatch isn't connected on the relay")
+        return claudelog.blocks(relay.aw, relay.store, labeler, _q(args))
+    if name == "get_claude_messages":
+        now = datetime.now(timezone.utc)
+        return claudelog.events(relay.store, _since(args), now, args.get("who"))
     if name == "get_coverage":
         return coverage.coverage(relay.store, min(float(args.get("days") or 7), 90),
                                  args.get("tz") or "America/Los_Angeles")
@@ -117,7 +130,7 @@ def call(relay, whoop, name: str, args: dict, state_json, activity_mod):
     raise KeyError(name)
 
 
-def handle(message: dict, relay, whoop, state_json, activity_mod) -> dict | None:
+def handle(message: dict, relay, whoop, state_json, activity_mod, labeler=None) -> dict | None:
     """One JSON-RPC message in, its response out (None for notifications)."""
     mid, method = message.get("id"), message.get("method")
     if mid is None:
@@ -140,7 +153,7 @@ def handle(message: dict, relay, whoop, state_json, activity_mod) -> dict | None
     if method == "tools/call":
         p = message.get("params") or {}
         try:
-            data = call(relay, whoop, p.get("name", ""), p.get("arguments") or {}, state_json, activity_mod)
+            data = call(relay, whoop, p.get("name", ""), p.get("arguments") or {}, state_json, activity_mod, labeler)
         except KeyError:
             return err(-32602, f"unknown tool {p.get('name')!r}")
         except Exception as e:  # a tool error the model can read and recover from
