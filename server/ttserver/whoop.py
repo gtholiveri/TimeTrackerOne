@@ -50,6 +50,8 @@ SYNC_EVERY = 15 * 60
 OVERLAP = timedelta(days=3)  # re-read the last few days: scores and edits land late
 BACKFILL_FROM = datetime(2015, 1, 1, tzinfo=timezone.utc)
 PAGE = 25  # WHOOP's maximum
+# WHOOP's edge answers 403 to urllib's default "Python-urllib/3.x" user agent.
+USER_AGENT = "tt-relay/1.0 (+https://github.com/gtholiveri/TimeTrackerOne)"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS whoop (
@@ -123,9 +125,18 @@ class Whoop:
     def _token(self, form: dict) -> dict:
         form = {**form, "client_id": self.client_id, "client_secret": self.client_secret}
         req = urllib.request.Request(TOKEN_URL, data=urllib.parse.urlencode(form).encode(), method="POST",
-                                     headers={"Content-Type": "application/x-www-form-urlencoded"})
-        with self.open(req, timeout=30) as res:
-            return json.loads(res.read())
+                                     headers={"Content-Type": "application/x-www-form-urlencoded",
+                                              "Accept": "application/json", "User-Agent": USER_AGENT})
+        try:
+            with self.open(req, timeout=30) as res:
+                return json.loads(res.read())
+        except urllib.error.HTTPError as e:
+            # Say what WHOOP said, not just the status.
+            try:
+                detail = e.read().decode("utf-8", "replace")[:300]
+            except Exception:
+                detail = ""
+            raise RuntimeError(f"WHOOP token endpoint answered HTTP {e.code}: {detail}") from None
 
     def _save(self, tokens: dict) -> None:
         expires = time.time() + float(tokens.get("expires_in", 3600)) - 120
@@ -153,7 +164,8 @@ class Whoop:
     def _get(self, path: str, params: dict | None = None) -> dict:
         url = API + path + ("?" + urllib.parse.urlencode(params) if params else "")
         for attempt in range(5):
-            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self._access_token()}"})
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self._access_token()}",
+                                                       "Accept": "application/json", "User-Agent": USER_AGENT})
             try:
                 with self.open(req, timeout=30) as res:
                     return json.loads(res.read())
