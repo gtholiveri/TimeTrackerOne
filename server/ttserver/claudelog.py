@@ -145,12 +145,11 @@ def blocks(aw, store, labeler, q: dict[str, str]) -> dict:
                        "session": m["title"], "text": m["text"][:600]} for m in msgs if m["who"] == "you"],
             "_msgs": msgs,
         })
-    if labeler is not None and q.get("label", "1") != "0":
-        describe(labeler, result)
+    notes = ["labels off"] if labeler is None or q.get("label", "1") == "0" else describe(labeler, result)
     for r in result:
         r.pop("_msgs", None)
     return {"start": act["start"], "end": act["end"], "tz": act["tz"], "count": len(result),
-            "claude_seconds": sum(r["seconds"] for r in result), "blocks": result}
+            "claude_seconds": sum(r["seconds"] for r in result), "label_notes": notes, "blocks": result}
 
 
 SYSTEM = (
@@ -173,8 +172,10 @@ def _block_prompt(b: dict) -> dict:
             "claude_said": [m["text"][:200] for m in claude[-3:]]}
 
 
-def describe(labeler, result: list[dict]) -> None:
-    """Fills label/summary/kind for blocks with messages, from the cache or the LLM chain."""
+def describe(labeler, result: list[dict]) -> list[str]:
+    """Fills label/summary/kind for blocks with messages, from the cache or the LLM chain.
+    Returns notes on providers that failed."""
+    notes: list[str] = [] if labeler.chain else ["no LLM provider configured"]
     todo = []
     for b in result:
         if not b["_msgs"]:
@@ -193,14 +194,20 @@ def describe(labeler, result: list[dict]) -> None:
         user = json.dumps({bid: p for bid, (_, _, p) in zip(ids, batch)}, ensure_ascii=False)
         for prov in labeler.chain:
             if labeler.cooldown.get(prov.name, 0) > time.time():
+                notes.append(f"{prov.name}: cooling down")
                 continue
             try:
-                answer = _parse(labeler.call(prov, SYSTEM, user), ids)
+                text = labeler.call(prov, SYSTEM, user)
+                answer = _parse(text, ids)
             except labels.ProviderError as e:
                 if e.retry_after:
                     labeler.cooldown[prov.name] = time.time() + e.retry_after
+                notes.append(f"{prov.name}: {e}")
+                labeler.log("claude labels:", prov.name, "failed:", e)
                 continue
             if not answer:
+                notes.append(f"{prov.name}: unusable answer: {(text or '')[:120]!r}")
+                labeler.log("claude labels:", prov.name, "answered nothing usable:", (text or "")[:200])
                 continue
             rows = []
             for bid, (key, b, _) in zip(ids, batch):
@@ -212,6 +219,7 @@ def describe(labeler, result: list[dict]) -> None:
     for b in result:
         for k in ("label", "summary", "kind"):
             b.setdefault(k, None)
+    return notes
 
 
 def _parse(text: str, ids: list[str]) -> dict[str, dict]:
