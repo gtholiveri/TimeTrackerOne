@@ -287,7 +287,7 @@ them, in `whoop.db` next to the other databases (`ttserver/whoop.py`).
    ```
    fly secrets set TT_WHOOP_CLIENT_ID=... TT_WHOOP_CLIENT_SECRET=...
    ```
-3. Open `https://<your relay>/tt/whoop/connect?key=<TT_KEY>` in a browser and
+3. Open `https://<your relay>/tt/whoop/connect` in a browser and
    allow access. The first sync backfills your whole history (a few minutes),
    then it syncs every 15 minutes, re-reading the last 3 days because scores
    land late.

@@ -10,7 +10,7 @@ when WHOOP updates it (scores arrive minutes to hours after the event).
 Setup (server/README.md, "WHOOP"): register an app at
 https://developer-dashboard.whoop.com with the redirect URL
 https://<relay>/tt/whoop/callback, set TT_WHOOP_CLIENT_ID and
-TT_WHOOP_CLIENT_SECRET, then open https://<relay>/tt/whoop/connect?key=TT_KEY
+TT_WHOOP_CLIENT_SECRET, then open https://<relay>/tt/whoop/connect
 once and sign in to WHOOP. The relay keeps the refresh token (WHOOP rotates it
 on every refresh) and syncs every SYNC_EVERY seconds from then on. The first
 sync backfills everything since BACKFILL_FROM.

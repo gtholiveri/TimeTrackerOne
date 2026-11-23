@@ -40,7 +40,7 @@ revokes it alone:
         Body: {"blocks": [{"id", "items": [{"subject", "app", "title", "seconds",
         "category"}]}]}. Answers {"labels": {id: label}, "model": ...}, labels
         written by a free LLM API and cached (labels.py).
-    GET  /tt/whoop/connect?key=KEY
+    GET  /tt/whoop/connect   (no key needed)
         Sends you to WHOOP to sign in; WHOOP comes back to /tt/whoop/callback
         and the relay starts pulling everything (whoop.py).
     GET  /tt/whoop?key=KEY[&kind=cycle|recovery|sleep|workout|profile|body][&days=N]
@@ -318,8 +318,7 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                 return self.send(200, "WHOOP connected. The relay is pulling your data now; "
                                       "/tt/whoop/status shows how far it got.\n")
             if path == "/tt/whoop/connect":
-                if not self.authorized():
-                    return self.challenge()
+                # No key: it only starts WHOOP's own sign-in (Gabe, 2026-11-23: no key juggling).
                 return self.send(302, "", extra={"Location": whoop.auth_url(redirect)})
             if not self.authorized(read=True):
                 return self.challenge()
