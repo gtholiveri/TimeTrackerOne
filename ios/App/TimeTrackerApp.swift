@@ -23,7 +23,13 @@ struct TimeTrackerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            StatusView()
+            TabView {
+                DataView().tabItem { Label("Data", systemImage: "chart.bar.doc.horizontal") }
+                NavigationStack { TimelineView() }.tabItem { Label("Timeline", systemImage: "list.bullet.rectangle") }
+                NavigationStack { MapDayView() }.tabItem { Label("Map", systemImage: "map") }
+                WhoopView().tabItem { Label("WHOOP", systemImage: "heart.text.square") }
+                StatusView().tabItem { Label("Setup", systemImage: "gearshape") }
+            }
         }
         .onChange(of: phase) { _, now in
             if now == .active {
@@ -51,8 +57,23 @@ struct StatusView: View {
                         .onChange(of: relay) { _, v in TTSettings.relayURL = v }
                     TextField("Device name", text: $device)
                         .onChange(of: device) { _, v in TTSettings.deviceName = v }
-                    Text("The shortcuts fill both in when they run, so you normally don't type anything here.")
+                    Text("Set once. Everything (uploads, this app's viewer, agents) uses the same key in this URL.")
                         .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section {
+                    WatchStatusRows()
+                    LabeledContent("Starts asked by automations", value: "\(TTWatchGuard.startsAsked)")
+                    LabeledContent("Extra copies told to stop", value: "\(TTWatchGuard.stopsSent)")
+                } header: {
+                    Text("TT Watch")
+                } footer: {
+                    Text("The open/close automations start TT Watch when it stops answering app switches: Get Current App, Log App Opened (or Closed), then If its result is true, Run Shortcut TT-Watch.")
+                }
+                Section("This phone's copy") {
+                    LabeledContent("Days kept", value: "\(TTArchive.days().count)")
+                    LabeledContent("Size", value: ByteCountFormatter.string(fromByteCount: Int64(TTArchive.size()), countStyle: .file))
+                    NavigationLink("Raw lines") { RawLinesView() }
+                    NavigationLink("Motion") { MotionView() }
                 }
                 Section("Uploads") {
                     LabeledContent("Waiting to upload", value: "\(pending) lines")
@@ -80,7 +101,7 @@ struct StatusView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("TimeTracker")
+            .navigationTitle("Setup")
             .id(tick)
             .task { await refresh() }
             .refreshable { await TTLog.shared.flush(); await refresh() }

@@ -17,19 +17,22 @@ last heartbeat in the log shows how long iOS let it run.
 The app queues each batch and uploads it when there's network. Its action
 never fails, so the loop doesn't stop when the network drops, and the relay
 hears about an unlock straight away even when it fires no automation. No
-files: the app is the only store on the phone.
+files: the app is the only store on the phone. No relay URL either: the app
+already has it, so importing this shortcut asks nothing.
+
+Nobody needs to start it by hand. The "App is opened" / "App is closed"
+automations ask the app whether TT Watch is alive (it answers every app
+switch within seconds) and run it when it isn't. If that ever starts a second
+copy, Log TT Lines answers "stop" to the older one, which leaves.
 */
 
 #define name TT Watch
 #define color blue
 
-#question relayURL "Your relay's ingest URL with its key, the same one TT Sync uses (it is handed to the app): https://<your relay>/tt/ingest?key=<TT_INGEST_KEY>" "https://YOUR-RELAY/tt/ingest?key=YOUR-KEY"
-
 #include 'actions/calendar'
 #include 'actions/device'
 #include 'tt-actions.cherri'
 
-const base = text(relayURL)
 const run = randomNumber(100000, 999999)
 const dev = deviceDetail("Device Name")
 const started = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
@@ -69,9 +72,16 @@ repeat i for 100000 {
             // One text, not a list. The app queues and uploads it; it never
             // fails, online or off.
             const lines = joinText(@buffer, "\n")
-            const logged = logLines("{lines}", "{dev}", "{base}")
+            const logged = logLines("{lines}", "{dev}", "")
             @buffer = []
             @pending = 0
+            // A newer TT Watch took over (an automation started one when this
+            // one looked dead): leave so only one runs.
+            if logged == "stop" {
+                const stopped = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
+                const bye = logLines("tt|src=ios|kind=end|dev={dev}|run={run}|ts={stopped}|reason=replaced", "{dev}", "")
+                stop()
+            }
         }
     }
     wait(2)
@@ -80,4 +90,4 @@ repeat i for 100000 {
 const ended = formatDate(CurrentDate, "Custom", "yyyy-MM-dd HH:mm:ss.SSSXXX")
 @buffer += "tt|src=ios|kind=end|dev={dev}|run={run}|ts={ended}"
 const rest = joinText(@buffer, "\n")
-const logged2 = logLines("{rest}", "{dev}", "{base}")
+const logged2 = logLines("{rest}", "{dev}", "")

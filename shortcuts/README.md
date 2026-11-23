@@ -11,9 +11,18 @@ One shortcut, plus two automations that call the TimeTracker app directly:
 
 | Piece | What it does |
 | --- | --- |
-| [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | Polls lock state and the current app every ~2 s and logs changes, plus a heartbeat with the battery level. Keeps lines in memory while locked and hands them to the app (Log TT Lines) at the unlock. Runs until iOS stops it. Asks for the relay URL when you add it. |
-| "App is opened" automation | Get Current App → TimeTracker **Log App Opened**. |
-| "App is closed" automation | Get Current App → TimeTracker **Log App Closed** (locking counts as a close). |
+| [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | Polls lock state and the current app every ~2 s and logs changes, plus a heartbeat with the battery level. Keeps lines in memory while locked and hands them to the app (Log TT Lines) at the unlock. Runs until iOS stops it, or stops itself when the app says a newer copy took over. Asks nothing when you add it. |
+| "App is opened" automation | Get Current App → TimeTracker **Log App Opened** → If its result is true: Run Shortcut **TT-Watch**. |
+| "App is closed" automation | Get Current App → TimeTracker **Log App Closed** (locking counts as a close) → the same If. |
+
+**Keep-alive.** TT Watch answers every app switch within seconds, so Log App
+Opened/Closed can tell when it's dead: nothing heard since the previous
+switch, even after waiting 4 s for an unlock's hand-over. Then they return
+true (at most once per 2 minutes) and the automation starts it. If a false
+alarm ever starts a second copy, Log TT Lines answers "stop" to the older one
+and it leaves. Never put a bare Run Shortcut in the automations: Run Shortcut
+waits for TT Watch to finish, so each switch would add another copy (9:19 to
+9:22 on 2026-11-23 made 8).
 
 Nothing here touches a file or the network. The app (`ios/`) queues every
 line and uploads it when there's network, so nothing shows an error banner.
@@ -27,14 +36,17 @@ How the relay combines them: [`docs/fusion.md`](../docs/fusion.md).
 You need the relay running ([`server/README.md`](../server/README.md)) and
 the TimeTracker app from TestFlight.
 
-1. Add **TT Watch** from the link and answer its question with
-   `https://<your relay>/tt/ingest?key=<TT_INGEST_KEY>`. Tap it once to start
-   it; that also gives the app the relay URL and the phone's name.
+1. Add **TT Watch** from the link. The app needs the relay URL once, in its
+   Setup tab: `https://<your relay>/tt/ingest?key=<the key>` (already there if
+   an older TT Watch ever ran). Tap TT Watch once to start it; that also gives
+   the app the phone's name.
 2. Shortcuts → Automation → **+** → **App** → *Choose* → every app → tick
    **Is Opened** only → **Run Immediately** → *Next* → **New Blank
    Automation**. Add **Get Current App**, then **Log App Opened** (under
    TimeTracker); its Current App is filled in with Get Current App's result.
-   If it isn't, tap the field and pick *Current App*.
+   If it isn't, tap the field and pick *Current App*. Then add **If**: input
+   *Needs Starting* (Log App Opened's result) **is true**, and inside it
+   **Run Shortcut** → TT-Watch.
 3. Same again with **Is Closed** only and **Log App Closed**.
 4. Turn off *Notify When Run* on both.
 5. Delete TT Sync, TT App Opened, TT App Closed and the old test shortcuts if
@@ -70,8 +82,8 @@ The retired experiments are in [`test-harness/shortcuts/`](../test-harness/short
   file names into dashes (GitHub would turn them into dots). So the shortcuts
   arrive as TT-Watch, TT-App-Opened and so on; `run(...)` would have to use
   those names.
-- Secrets never go in the source: the release is public. TT Watch's relay URL
-  is an import question (`#question`), answered when the shortcut is added.
+- Secrets never go in the source: the release is public. TT Watch passes no
+  relay URL; the app keeps the one it was given.
 - To find the identifiers for another action, build it once on the phone, share
   the shortcut as an iCloud link, and read
   `https://www.icloud.com/shortcuts/api/records/<id>`: its `shortcut` field

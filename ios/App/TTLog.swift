@@ -85,7 +85,10 @@ actor TTLog {
     /// if the last try was over a minute ago. Never throws.
     func record(_ lines: [String], uploadNow: Bool = true) async {
         let clean = lines.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        if !clean.isEmpty { append(clean) }
+        if !clean.isEmpty {
+            append(clean)
+            TTArchive.append(clean)
+        }
         if uploadNow || Date().timeIntervalSince(lastAttempt) > 60 {
             await flush()
         }

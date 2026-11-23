@@ -51,16 +51,20 @@ struct LogAppEventIntent: AppIntent {
 /// The actions an "App is opened" / "App is closed" automation runs directly,
 /// after Get Current App: no shortcut to import. iOS gives the automation no
 /// app name of its own, so Get Current App is what says which app it was.
-private func logAppEvent(_ kind: String, current: String?) async {
+/// Returns whether TT Watch needs starting (TTWatchGuard), for the
+/// automation's next step: If true, Run Shortcut "TT Watch".
+private func logAppEvent(_ kind: String, current: String?) async -> Bool {
     let line = TTLine.make(kind: kind, [("input", ""), ("cur", current ?? "")])
+    async let start = TTWatchGuard.needsStart()  // starts now; the upload below can take a while
     await TTLog.shared.record([line])
     await MainActor.run { TTSensors.shared.catchUpMotion() }
+    return await start
 }
 
 struct LogAppOpenedIntent: AppIntent {
     static let title: LocalizedStringResource = "Log App Opened"
     static let description = IntentDescription(
-        "For the \"App is opened\" automation: put Get Current App first and pass its result in. Records it for TimeTracker. Never fails."
+        "For the \"App is opened\" automation: put Get Current App first and pass its result in. Records it for TimeTracker and returns whether TT Watch needs starting. Never fails."
     )
     static let openAppWhenRun = false
 
@@ -69,16 +73,15 @@ struct LogAppOpenedIntent: AppIntent {
 
     static var parameterSummary: some ParameterSummary { Summary("Log \(\.$current) opened") }
 
-    func perform() async throws -> some IntentResult {
-        await logAppEvent("open", current: current)
-        return .result()
+    func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
+        .result(value: await logAppEvent("open", current: current))
     }
 }
 
 struct LogAppClosedIntent: AppIntent {
     static let title: LocalizedStringResource = "Log App Closed"
     static let description = IntentDescription(
-        "For the \"App is closed\" automation: put Get Current App first and pass its result in. Records it for TimeTracker. Never fails."
+        "For the \"App is closed\" automation: put Get Current App first and pass its result in. Records it for TimeTracker and returns whether TT Watch needs starting. Never fails."
     )
     static let openAppWhenRun = false
 
@@ -87,16 +90,15 @@ struct LogAppClosedIntent: AppIntent {
 
     static var parameterSummary: some ParameterSummary { Summary("Log closed, now in \(\.$current)") }
 
-    func perform() async throws -> some IntentResult {
-        await logAppEvent("close", current: current)
-        return .result()
+    func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
+        .result(value: await logAppEvent("close", current: current))
     }
 }
 
 struct LogLinesIntent: AppIntent {
     static let title: LocalizedStringResource = "Log TT Lines"
     static let description = IntentDescription(
-        "Records ready-made tt| lines (one per line, as TT Watch writes them) and uploads them when there's network. Never fails."
+        "Records ready-made tt| lines (one per line, as TT Watch writes them) and uploads them when there's network. Returns \"stop\" if a newer TT Watch has taken over, else \"ok\". Never fails."
     )
     static let openAppWhenRun = false
 
@@ -109,12 +111,14 @@ struct LogLinesIntent: AppIntent {
     @Parameter(title: "Relay URL")
     var relay: String?
 
-    func perform() async throws -> some IntentResult {
+    /// Returns "stop" when a newer TT Watch has taken over (TT Watch then stops), else "ok".
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
         applySettings(relay: relay, device: device)
         let split = (lines ?? "").split(whereSeparator: \.isNewline).map(String.init)
+        let answer = TTWatchGuard.heard(split)
         await TTLog.shared.record(split)
         await MainActor.run { TTSensors.shared.catchUpMotion() }
-        return .result()
+        return .result(value: answer)
     }
 }
 
