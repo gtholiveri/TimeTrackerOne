@@ -60,7 +60,7 @@ struct WhoopView: View {
     }
 
     /// When a record happened: its end (sleeps and cycles end on the morning they count for), else start or creation.
-    static func when(_ r: [String: Any]) -> Date? {
+    nonisolated static func when(_ r: [String: Any]) -> Date? {
         TTTime.parse(r["end"] as? String) ?? TTTime.parse(r["start"] as? String) ?? TTTime.parse(r["created_at"] as? String)
     }
 
