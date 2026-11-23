@@ -24,11 +24,11 @@ struct TimeTrackerApp: App {
     var body: some Scene {
         WindowGroup {
             TabView {
-                DataView().tabItem { Label("Data", systemImage: "chart.bar.doc.horizontal") }
+                FusedDayView().tabItem { Label("Day", systemImage: "calendar.day.timeline.left") }
                 NavigationStack { TimelineView() }.tabItem { Label("Timeline", systemImage: "list.bullet.rectangle") }
                 NavigationStack { MapDayView() }.tabItem { Label("Map", systemImage: "map") }
                 WhoopView().tabItem { Label("WHOOP", systemImage: "heart.text.square") }
-                StatusView().tabItem { Label("Setup", systemImage: "gearshape") }
+                DataView().tabItem { Label("Data", systemImage: "chart.bar.doc.horizontal") }
             }
         }
         .onChange(of: phase) { _, now in

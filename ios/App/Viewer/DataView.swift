@@ -1,5 +1,6 @@
 // The "Data" tab: has data been arriving, per day, from every source, plus
-// TT Watch's state and every run of it. Tap a day for its totals.
+// TT Watch's state and every run of it. Tap a day for its totals. Setup (the
+// relay URL and device name) is behind the gear.
 
 import Charts
 import SwiftUI
@@ -9,6 +10,7 @@ struct DataView: View {
     @State private var summary: TTSummary?
     @State private var error: String?
     @State private var loading = false
+    @State private var setup = false
 
     var body: some View {
         NavigationStack {
@@ -41,6 +43,12 @@ struct DataView: View {
                 }
             }
             .navigationTitle("Data")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { setup = true } label: { Label("Setup", systemImage: "gearshape") }
+                }
+            }
+            .sheet(isPresented: $setup) { StatusView() }
             .navigationDestination(for: String.self) { DayDetailView(day: $0, sum: sumDay($0), cov: covDay($0)) }
             .overlay { if loading && coverage == nil { ProgressView() } }
             .refreshable { await load() }

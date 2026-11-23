@@ -86,7 +86,7 @@ struct WhoopView: View {
     }
 }
 
-private struct WhoopDayRow: View {
+struct WhoopDayRow: View {
     let day: String
     let records: [[String: Any]]
 
