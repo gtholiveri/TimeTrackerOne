@@ -54,7 +54,8 @@ struct LogAppEventIntent: AppIntent {
 /// Returns whether TT Watch needs starting (TTWatchGuard), for the
 /// automation's next step: If true, Run Shortcut "TT Watch".
 private func logAppEvent(_ kind: String, current: String?) async -> Bool {
-    let line = TTLine.make(kind: kind, [("input", ""), ("cur", current ?? "")])
+    let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+    let line = TTLine.make(kind: kind, [("input", ""), ("cur", current ?? ""), ("build", build)])
     async let start = TTWatchGuard.needsStart()  // starts now; the upload below can take a while
     await TTLog.shared.record([line])
     await MainActor.run { TTSensors.shared.catchUpMotion() }

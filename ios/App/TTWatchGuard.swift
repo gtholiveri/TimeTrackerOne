@@ -8,14 +8,18 @@
 // return "TT Watch needs starting", and the automation's next step is
 //     If <that> is true: Run Shortcut "TT Watch"
 //
-// The test, when an automation runs: was anything heard from the watcher
-// since the previous switch? A close and the next open come within a second
-// of each other, so of each pair only the one with a real gap to the previous
-// switch decides. If nothing was heard, it waits 4 s (the watcher may be
-// handing over its locked-time lines right now, at an unlock) and asks again.
-// A watcher that reached the end of its loop counts as dead straight away.
-// After asking for a start it says no for 2 minutes, so the new watcher has
-// time to speak.
+// The test, when an automation runs: does the watcher report this switch? It
+// reads the current app every ~2 s and hands its lines over straight away
+// while the phone is unlocked, which it is when an app opens. So a live
+// watcher is heard within a few seconds of any switch. The app waits up to
+// 8 s for that. If nothing came, and nothing came in the 30 s before the
+// switch either (so a switch back to the very same app, which the watcher
+// doesn't report, can't fool it), the watcher is dead and the automation
+// starts a new one. A close and the next open arrive together; one "yes" per
+// 2 minutes covers both. A watcher that reached the end of its loop counts as
+// dead straight away. (The first version only compared with the previous
+// switch, so a watcher that died needed two switches, about 7-9 minutes of
+// use, before anything restarted it.)
 //
 // A false alarm would start a second watcher. The app keeps only the newest:
 // Log TT Lines answers "stop" to any other run, and TT Watch stops on it.
@@ -25,8 +29,10 @@ import Foundation
 enum TTWatchGuard {
     static let shortcutName = "TT Watch"
     static let cooldown: TimeInterval = 120
-    static let pairGap: TimeInterval = 10
-    static let flushWait: UInt64 = 4_000_000_000
+    /// How long to wait for the watcher to report this switch.
+    static let reportWait: TimeInterval = 8
+    /// Heard this recently before the switch: alive (covers same-app switches it doesn't report).
+    static let recent: TimeInterval = 30
 
     private static let defaults = UserDefaults.standard
     private static let lock = NSLock()
@@ -95,30 +101,22 @@ enum TTWatchGuard {
     /// Called by the open/close actions. True when the automation should run TT Watch.
     static func needsStart() async -> Bool {
         let now = Date()
-        let prev = markInUse(now)
-
-        if !lastEnded && lastHeard != nil {
-            // The second of a close/open pair: the first one decides.
-            guard let prev, now.timeIntervalSince(prev) >= pairGap else { return false }
-            if heardSince(prev) { return false }
-            try? await Task.sleep(nanoseconds: flushWait)
-            if heardSince(prev) { return false }
+        markInUse(now)
+        if lastEnded || lastHeard == nil { return claimStart(now) }
+        if let h = lastHeard, now.timeIntervalSince(h) < recent { return false }
+        // Quiet for a while: wait for the watcher to report this switch.
+        let deadline = now.addingTimeInterval(reportWait)
+        while Date() < deadline {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if let h = lastHeard, h >= now.addingTimeInterval(-2) { return false }
+            if lastEnded { break }
         }
         return claimStart(now)
     }
 
-    /// Records this automation run; returns the one before it.
-    private static func markInUse(_ now: Date) -> Date? {
-        lock.withLock {
-            let prev = lastInUse
-            defaults.set(now, forKey: "watchLastInUse")
-            return prev
-        }
-    }
-
-    private static func heardSince(_ t: Date) -> Bool {
-        guard let h = lastHeard else { return false }
-        return h >= t.addingTimeInterval(-5)  // the watcher can beat the automation by a moment
+    /// Records this automation run (the phone is in use), for the app's screens.
+    private static func markInUse(_ now: Date) {
+        lock.withLock { defaults.set(now, forKey: "watchLastInUse") }
     }
 
     /// One "yes" per cooldown, even when a close and an open ask at once.

@@ -16,9 +16,10 @@ One shortcut, plus two automations that call the TimeTracker app directly:
 | "App is closed" automation | Get Current App → TimeTracker **Log App Closed** (locking counts as a close) → the same If. |
 
 **Keep-alive.** TT Watch answers every app switch within seconds, so Log App
-Opened/Closed can tell when it's dead: nothing heard since the previous
-switch, even after waiting 4 s for an unlock's hand-over. Then they return
-true (at most once per 2 minutes) and the automation starts it. If a false
+Opened/Closed can tell when it's dead: nothing heard in the 30 s before
+this switch, and nothing within 8 s after it. Then they return true (at most
+once per 2 minutes) and the automation starts it, on the first switch after
+the watcher died. Open/close lines carry `build=` (the app's build number). If a false
 alarm ever starts a second copy, Log TT Lines answers "stop" to the older one
 and it leaves. Never put a bare Run Shortcut in the automations: Run Shortcut
 waits for TT Watch to finish, so each switch would add another copy (9:19 to
