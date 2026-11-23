@@ -19,7 +19,12 @@ One shortcut, plus two automations that call the TimeTracker app directly:
 Opened/Closed can tell when it's dead: nothing heard in the 30 s before
 this switch, and nothing within 8 s after it. Then they return true (at most
 once per 2 minutes) and the automation starts it, on the first switch after
-the watcher died. Open/close lines carry `build=` (the app's build number). If a false
+the watcher died. Never while the phone is locked: locking fires the closed
+automation, a locked watcher keeps its lines to itself, and starting TT Watch
+while locked fails with "requires privacy permissions that cannot be granted
+while your device is locked". A close waits up to 15 s for data protection to
+show a lock (it takes about 10 s) and answers false if it does. Open/close
+lines carry `build=` (the app's build number). If a false
 alarm ever starts a second copy, Log TT Lines answers "stop" to the older one
 and it leaves. Never put a bare Run Shortcut in the automations: Run Shortcut
 waits for TT Watch to finish, so each switch would add another copy (9:19 to

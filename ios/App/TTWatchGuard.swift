@@ -21,16 +21,27 @@
 // switch, so a watcher that died needed two switches, about 7-9 minutes of
 // use, before anything restarted it.)
 //
+// Never while locked. Locking fires the "closed" automation, and a watcher
+// keeps its lines to itself while the phone is locked, so it would look dead.
+// Starting TT Watch then fails anyway ("requires privacy permissions that
+// cannot be granted while your device is locked", seen 2026-11-23 15:50).
+// Data protection says the phone is locked about 10 s after the screen locks,
+// so a close waits up to 15 s and answers false once it does. An open waits
+// 8 s, and answers false if the phone is locked by then too.
+//
 // A false alarm would start a second watcher. The app keeps only the newest:
 // Log TT Lines answers "stop" to any other run, and TT Watch stops on it.
 
 import Foundation
+import UIKit
 
 enum TTWatchGuard {
     static let shortcutName = "TT Watch"
     static let cooldown: TimeInterval = 120
     /// How long to wait for the watcher to report this switch.
     static let reportWait: TimeInterval = 8
+    /// A close may be the phone locking: long enough for data protection to say so (~10 s).
+    static let closeWait: TimeInterval = 15
     /// Heard this recently before the switch: alive (covers same-app switches it doesn't report).
     static let recent: TimeInterval = 30
 
@@ -99,19 +110,37 @@ enum TTWatchGuard {
     // MARK: - Log App Opened / Closed
 
     /// Called by the open/close actions. True when the automation should run TT Watch.
-    static func needsStart() async -> Bool {
+    static func needsStart(close: Bool = false) async -> Bool {
         let now = Date()
         markInUse(now)
-        if lastEnded || lastHeard == nil { return claimStart(now) }
-        if let h = lastHeard, now.timeIntervalSince(h) < recent { return false }
-        // Quiet for a while: wait for the watcher to report this switch.
-        let deadline = now.addingTimeInterval(reportWait)
-        while Date() < deadline {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            if let h = lastHeard, h >= now.addingTimeInterval(-2) { return false }
-            if lastEnded { break }
+        if await isLocked() { return false }
+        if let h = lastHeard, !lastEnded, now.timeIntervalSince(h) < recent { return false }
+        // Wait for the watcher to report this switch, or for the phone to turn out locked.
+        let deadline = now.addingTimeInterval(close ? closeWait : reportWait)
+        if !lastEnded && lastHeard != nil {
+            while Date() < deadline {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if let h = lastHeard, h >= now.addingTimeInterval(-2) { return false }
+                if lastEnded { break }
+                if await isLocked() { return false }
+            }
+        } else if close {
+            // Never heard, or it ended: still make sure this close isn't a lock.
+            while Date() < deadline {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if await isLocked() { return false }
+            }
         }
+        if await isLocked() { return false }
         return claimStart(now)
+    }
+
+    /// Data protection's view: locked once complete-protection files can't be read
+    /// (about 10 s after the screen locks, with a passcode set).
+    static func isLocked() async -> Bool {
+        let available = await MainActor.run { UIApplication.shared.isProtectedDataAvailable }
+        if !available { return true }
+        return FileManager.default.fileExists(atPath: ProtectedCanary.url.path) && !ProtectedCanary.readable()
     }
 
     /// Records this automation run (the phone is in use), for the app's screens.
