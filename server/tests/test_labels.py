@@ -202,6 +202,44 @@ class Chain(unittest.TestCase):
         self.assertTrue(labels.providers({"TT_LLM_KEYLESS": "1"}))
 
 
+class Anthropic(unittest.TestCase):
+    """The Anthropic provider speaks the Messages API, not chat completions."""
+
+    def test_first_in_the_chain(self):
+        chain = labels.providers({"TT_LLM_GEMINI_KEY": "g", "TT_LLM_ANTHROPIC_KEY": "a"})
+        self.assertEqual([p.name for p in chain], ["anthropic", "gemini"])
+        self.assertEqual(chain[0].model, "claude-haiku-5-5")
+
+    def test_request_and_answer(self):
+        sent = {}
+
+        def urlopen(req, timeout=None):
+            sent["url"], sent["headers"] = req.full_url, {k.lower(): v for k, v in req.header_items()}
+            sent["body"] = json.loads(req.data)
+            answer = {"stop_reason": "end_turn", "content": [{"type": "thinking", "thinking": ""},
+                                                              {"type": "text", "text": '{"b1": "Hi"}'}]}
+            return io.BytesIO(json.dumps(answer).encode())
+
+        p = labels.providers({"TT_LLM_ANTHROPIC_KEY": "k"})[0]
+        with mock.patch.object(labels.urllib.request, "urlopen", urlopen):
+            self.assertEqual(labels.chat(p, "sys", "user"), '{"b1": "Hi"}')
+        self.assertEqual(sent["url"], "https://api.anthropic.com/v1/messages")
+        self.assertEqual(sent["headers"]["x-api-key"], "k")
+        self.assertEqual(sent["headers"]["anthropic-version"], "2023-06-01")
+        self.assertNotIn("authorization", sent["headers"])
+        self.assertEqual(sent["body"]["system"], "sys")
+        self.assertEqual(sent["body"]["messages"], [{"role": "user", "content": "user"}])
+        self.assertNotIn("temperature", sent["body"])
+
+    def test_refusal_is_a_failure(self):
+        answer = {"stop_reason": "refusal", "content": []}
+        p = labels.providers({"TT_LLM_ANTHROPIC_KEY": "k"})[0]
+        with mock.patch.object(labels.urllib.request, "urlopen",
+                               lambda req, timeout=None: io.BytesIO(json.dumps(answer).encode())):
+            with self.assertRaises(labels.ProviderError):
+                labels.chat(p, "s", "u")
+
+
 class Route(unittest.TestCase):
     KEY = "labels-key-0123456789abcdef"
     INGEST = "ingest-key-0123456789abcdef"

@@ -223,6 +223,7 @@ running on 5600, leave out `TT_AW_COMMAND`.
 | `TT_AW_COMMAND` | | Starts that server and restarts it if it exits. |
 | `TT_AW_API_KEY` | | If ActivityWatch itself has `[auth] api_key` set. |
 | `TT_DASHBOARD` | `dashboard/dist` | The built dashboard served at `/app/`. |
+| `TT_LLM_ANTHROPIC_KEY` | | Gabriel's own Anthropic API key. When set, Claude Haiku 5.5 writes the labels first (`TT_LLM_ANTHROPIC_MODEL` overrides). |
 | `TT_LLM_GROQ_KEY`, `TT_LLM_CEREBRAS_KEY`, `TT_LLM_GEMINI_KEY`, `TT_LLM_MISTRAL_KEY`, `TT_LLM_OPENROUTER_KEY` | | Free-tier keys for block labels, tried in this order. |
 | `TT_LLM_<NAME>_MODEL` | (below) | A different model for that provider (`GROQ`, `LLM7`, ...). |
 | `TT_LLM_LLM7_KEY` | | Optional free LLM7 token, for higher limits. |
@@ -249,6 +250,7 @@ limits as of October 2026.
 
 | Provider | Model | Key | Free limits | Why |
 | --- | --- | --- | --- | --- |
+| Anthropic (paid) | `claude-haiku-5-5` | `TT_LLM_ANTHROPIC_KEY` | paid, about $0.10 / $0.50 per million tokens in / out | First when set. Messages API, low effort. |
 | Groq | `openai/gpt-oss-20b` | `TT_LLM_GROQ_KEY` ([console.groq.com/keys](https://console.groq.com/keys)) | 30 req/min, 1,000/day | Fastest, most generous; the one to set up. |
 | Cerebras | `gpt-oss-120b` | `TT_LLM_CEREBRAS_KEY` ([cloud.cerebras.ai](https://cloud.cerebras.ai)) | about 30 req/min, 14,400/day | Also very fast. Not on the list any more; check it's still free. |
 | Google Gemini | `gemini-2.5-flash-lite` | `TT_LLM_GEMINI_KEY` ([aistudio.google.com](https://aistudio.google.com/app/apikey)) | per-account quotas in AI Studio | Reliable. Free-tier prompts may be used by Google. |

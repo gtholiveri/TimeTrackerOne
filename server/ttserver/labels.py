@@ -66,6 +66,9 @@ class Provider(NamedTuple):
 # (name, chat completions URL, default model, key variable). Keyed providers first,
 # fastest and most generous free tier first. TT_LLM_<NAME>_MODEL overrides the model.
 KEYED = [
+    # Gabriel's own Anthropic key: cheap, reliable, and first when set. Not OpenAI-compatible;
+    # chat() speaks the Messages API for it.
+    ("anthropic", "https://api.anthropic.com/v1/messages", "claude-haiku-5-5", "TT_LLM_ANTHROPIC_KEY"),
     ("groq", "https://api.groq.com/openai/v1/chat/completions", "openai/gpt-oss-20b", "TT_LLM_GROQ_KEY"),
     ("cerebras", "https://api.cerebras.ai/v1/chat/completions", "gpt-oss-120b", "TT_LLM_CEREBRAS_KEY"),
     ("gemini", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
@@ -174,14 +177,22 @@ class ProviderError(Exception):
 
 def chat(p: Provider, system: str, user: str) -> str:
     """One chat completion; the answer's text."""
-    body = {"model": p.model, "temperature": 0.2, "max_tokens": 2000,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+    anthropic = p.name == "anthropic"
     headers = {"Content-Type": "application/json", "User-Agent": "tt-relay"}
-    if p.key:
-        headers["Authorization"] = f"Bearer {p.key}"
+    if anthropic:
+        # Messages API. Current Claude models reject temperature; low effort keeps
+        # the (adaptive) thinking short, since these are one-line summaries.
+        body = {"model": p.model, "max_tokens": 4000, "system": system,
+                "messages": [{"role": "user", "content": user}], "output_config": {"effort": "low"}}
+        headers |= {"x-api-key": p.key or "", "anthropic-version": "2023-06-01"}
+    else:
+        body = {"model": p.model, "temperature": 0.2, "max_tokens": 2000,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+        if p.key:
+            headers["Authorization"] = f"Bearer {p.key}"
     req = urllib.request.Request(p.url, data=json.dumps(body).encode(), headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as res:
+        with urllib.request.urlopen(req, timeout=TIMEOUT * (3 if anthropic else 1)) as res:
             data = json.loads(res.read())
     except urllib.error.HTTPError as e:
         retry = None
@@ -190,9 +201,22 @@ def chat(p: Provider, system: str, user: str) -> str:
                 retry = float(e.headers.get("Retry-After") or COOLDOWN)
             except (TypeError, ValueError):
                 retry = COOLDOWN
-        raise ProviderError(f"HTTP {e.code}", retry) from e
+        detail = ""
+        if e.code == 400:  # a rejected request says why
+            try:
+                detail = ": " + e.read().decode(errors="replace")[:200]
+            except OSError:
+                pass
+        raise ProviderError(f"HTTP {e.code}{detail}", retry) from e
     except (OSError, ValueError) as e:  # timeouts, refused connections, bad JSON
         raise ProviderError(f"{type(e).__name__}: {e}") from e
+    if anthropic:
+        if data.get("stop_reason") == "refusal":
+            raise ProviderError("refused")
+        blocks = data.get("content")
+        if not isinstance(blocks, list):
+            raise ProviderError("no content in the answer")
+        return "".join(b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text")
     try:
         return data["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError, TypeError) as e:
@@ -251,7 +275,11 @@ class Labeler:
         try:
             return self.call(p, system, user), p
         except ProviderError as e:
-            if str(e) != "HTTP 404":
+            if str(e) in ("HTTP 500", "HTTP 502", "HTTP 503", "HTTP 529"):
+                # Overloaded for a moment (Gemini 503s now and then): one more try.
+                time.sleep(2)
+                return self.call(p, system, user), p
+            if str(e) != "HTTP 404" or p.name == "anthropic":
                 raise
             model = current_model(p)
             if not model or model == p.model:
