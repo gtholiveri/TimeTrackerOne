@@ -87,7 +87,7 @@ def providers(env=os.environ) -> list[Provider]:
         return env.get(f"TT_LLM_{name.upper()}_MODEL") or default
 
     out = [Provider(n, url, model(n, m), env[k]) for n, url, m, k in KEYED if env.get(k)]
-    if env.get("TT_LLM_KEYLESS", "0") == "1":
+    if env.get("TT_LLM_KEYLESS", "0").strip().lower() in ("1", "true", "yes", "on"):
         out += [Provider(n, url, model(n, m), env.get(k) if k else None) for n, url, m, k in KEYLESS]
     return out
 
@@ -199,6 +199,27 @@ def chat(p: Provider, system: str, user: str) -> str:
         raise ProviderError("no choices in the answer") from e
 
 
+def current_model(p: Provider, timeout: float = TIMEOUT) -> str | None:
+    """When a provider says 404 (its default model was retired), the best model it
+    lists now: a flash-lite or flash model for Gemini, else a small instruct one."""
+    url = p.url.rsplit("/chat/completions", 1)[0] + "/models"
+    headers = {"User-Agent": "tt-relay"}
+    if p.key:
+        headers["Authorization"] = f"Bearer {p.key}"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout) as res:
+            ids = [m.get("id", "") for m in json.loads(res.read()).get("data", [])]
+    except (OSError, ValueError, AttributeError):
+        return None
+    ids = [i.split("/", 1)[1] if i.startswith("models/") else i for i in ids if i]
+    usable = [i for i in ids if not re.search(r"embed|image|tts|audio|vision|live|preview|exp|thinking|aqa", i)]
+    for pattern in (r"flash-lite", r"flash", r"mini|small|8b|20b", r"."):
+        found = sorted((i for i in usable if re.search(pattern, i)), reverse=True)  # newest version first
+        if found:
+            return found[0]
+    return None
+
+
 def prompt(batch: list[list[dict]]) -> tuple[list[str], str]:
     """Short ids (b1, b2, ...) for a batch and the user message describing it."""
     ids = [f"b{i + 1}" for i in range(len(batch))]
@@ -223,6 +244,22 @@ class Labeler:
         self.call = call
         self.log = log or (lambda *a: None)
         self.cooldown: dict[str, float] = {}
+
+    def complete(self, p: Provider, system: str, user: str) -> tuple[str, Provider]:
+        """One call to p. If p answers 404 (its model was retired), switch the chain to the
+        model it lists now and try once more. Returns the text and the provider that answered."""
+        try:
+            return self.call(p, system, user), p
+        except ProviderError as e:
+            if str(e) != "HTTP 404":
+                raise
+            model = current_model(p)
+            if not model or model == p.model:
+                raise
+            newer = p._replace(model=model)
+            self.chain = [newer if c is p else c for c in self.chain]
+            self.log("labels:", p.name, "model", p.model, "is gone; using", model)
+            return self.call(newer, system, user), newer
 
     def cached(self, keys: list[str]) -> dict[str, tuple[str, str]]:
         if not keys:
@@ -249,7 +286,8 @@ class Labeler:
                 continue
             ids, user = prompt([batch[n] for n in todo])  # only what earlier providers missed
             try:
-                answer = parse_labels(self.call(p, SYSTEM, user), ids)
+                text, p = self.complete(p, SYSTEM, user)
+                answer = parse_labels(text, ids)
             except ProviderError as e:
                 if e.retry_after:
                     self.cooldown[p.name] = time.time() + e.retry_after

@@ -197,7 +197,7 @@ def describe(labeler, result: list[dict]) -> list[str]:
                 notes.append(f"{prov.name}: cooling down")
                 continue
             try:
-                text = labeler.call(prov, SYSTEM, user)
+                text, prov = labeler.complete(prov, SYSTEM, user)
                 answer = _parse(text, ids)
             except labels.ProviderError as e:
                 if e.retry_after:

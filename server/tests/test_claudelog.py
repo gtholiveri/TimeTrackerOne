@@ -72,5 +72,26 @@ class ClaudeLog(unittest.TestCase):
         self.assertEqual(claudelog.blocks(aw, self.store, labeler, q)["blocks"][0]["kind"], "tinkering")
 
 
+class RetiredModel(unittest.TestCase):
+    def test_switches_to_a_listed_model_on_404(self):
+        from unittest import mock
+        from ttserver import labels
+        p = Provider("gemini", "https://g/v1beta/openai/chat/completions", "old-model", "k")
+        seen = []
+
+        def call(prov, system, user):
+            seen.append(prov.model)
+            if prov.model == "old-model":
+                raise labels.ProviderError("HTTP 404")
+            return "ok"
+
+        with tempfile.TemporaryDirectory() as d:
+            lab = Labeler(f"{d}/l.db", chain=[p], call=call)
+            with mock.patch.object(labels, "current_model", return_value="gemini-9-flash-lite"):
+                text, used = lab.complete(p, "s", "u")
+        self.assertEqual((text, used.model, seen), ("ok", "gemini-9-flash-lite", ["old-model", "gemini-9-flash-lite"]))
+        self.assertEqual(lab.chain[0].model, "gemini-9-flash-lite")
+
+
 if __name__ == "__main__":
     unittest.main()
