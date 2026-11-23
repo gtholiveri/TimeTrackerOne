@@ -28,10 +28,9 @@ you / an agent   ◀──────────── /tt/state   ┘
 
 `KEY` is the `TT_KEY` you set. Give it as `?key=`, as a bearer token, or as the
 password of HTTP basic auth (any user name). If you also set `TT_INGEST_KEY`,
-that key works for the two upload endpoints, and reads like a read key named
-`phone` (the TimeTracker app's data viewer uses it), but it can't write to
-ActivityWatch or open the web UI and dashboard. Put it on the phone (TT Watch
-and TT Safari).
+it works exactly like `TT_KEY`: one key for everything (Gabe's choice,
+2026-11-23). It's the one built into the TimeTrackerOne app, on the home
+server, and given to agents.
 
 **Read keys, one per agent.** `TT_READ_KEYS` holds named keys that read and
 change nothing, as `name:key` pairs separated by commas
@@ -216,7 +215,7 @@ running on 5600, leave out `TT_AW_COMMAND`.
 | Variable | Default | |
 | --- | --- | --- |
 | `TT_KEY` | (required) | At least 16 characters. Opens everything. |
-| `TT_INGEST_KEY` | | Optional, at least 16 characters. Uploads, plus reads (the app's data viewer). |
+| `TT_INGEST_KEY` | | Optional, at least 16 characters. Same access as `TT_KEY`: the one key used everywhere. |
 | `TT_READ_KEYS` | | Optional. `name:key,name:key`, keys at least 16 characters. Read only, one per agent. |
 | `TT_DATA` | `data` | Folder for `tt.db` (the raw lines). |
 | `PORT` | `8080` | |

@@ -237,10 +237,10 @@ class Route(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(data), {"labels": {"c": "Busy in SOLIDWORKS"}, "model": "alpha/a-small"})
 
-    def test_needs_the_full_key(self):
+    def test_needs_a_key(self):
         body = json.dumps({"blocks": []})
         self.assertEqual(self.post(body, None)[0], 401)
-        self.assertEqual(self.post(body, self.INGEST)[0], 401)
+        self.assertEqual(self.post(body, self.INGEST)[0], 200)  # one key for everything
 
     def test_bad_body(self):
         self.assertEqual(self.post("[1, 2]", self.KEY)[0], 400)

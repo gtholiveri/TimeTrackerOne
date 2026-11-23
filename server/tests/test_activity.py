@@ -169,14 +169,12 @@ class ReadKey(unittest.TestCase):
         self.assertEqual(self.call("GET", "/tt/state", self.OTHER), 200)
         self.assertEqual(self.call("GET", "/tt/state", "not-a-key-0123456789"), 401)
 
-    def test_ingest_key_also_reads(self):
-        # The phone's key: uploads, plus what a read key opens (the app's data viewer).
+    def test_ingest_key_opens_everything(self):
+        # One key for everything: the phone's key works like TT_KEY.
         self.assertEqual(self.call("POST", "/tt/ingest", self.INGEST, b""), 200)
         self.assertEqual(self.call("GET", "/tt/state", self.INGEST), 200)
         self.assertEqual(self.call("GET", "/tt/lines?hours=48", self.INGEST), 200)
-        self.assertEqual(self.call("GET", "/api/0/buckets/", self.INGEST), 502)
-        for method, path in [("DELETE", "/api/0/buckets/x"), ("GET", "/"), ("GET", "/app/"), ("POST", "/tt/labels")]:
-            self.assertEqual(self.call(method, path, self.INGEST, b"{}"), 401, (method, path))
+        self.assertEqual(self.call("DELETE", "/api/0/buckets/x", self.INGEST), 502)  # reaches ActivityWatch
 
     def test_parse_read_keys(self):
         self.assertEqual(parse_read_keys(" muse:abcdefabcdefabcdef , hermes:0123456789abcdef0 "),

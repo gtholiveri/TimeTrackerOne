@@ -168,18 +168,15 @@ class EndToEnd(unittest.TestCase):
         win = self.client.events("aw-watcher-window_Long-Phone", now - timedelta(hours=3), now)
         self.assertEqual([round(e["duration"]) for e in win], [5400])
 
-    def test_ingest_key_uploads_and_reads(self):
+    def test_ingest_key_opens_everything(self):
         body = line(datetime.now(timezone.utc), "open", input="Notes", cur="Notes").replace(
             f"dev={DEV}", "dev=Key Phone").encode()
         self.assertEqual(self.http("POST", f"/tt/ingest?key={INGEST_KEY}", body)[0], 200)
         self.assertEqual(self.http("POST", f"/tt/safari?key={INGEST_KEY}", b"[]")[0], 200)
-        # The app's data viewer reads with the same key...
         self.assertEqual(self.http("GET", f"/tt/state?key={INGEST_KEY}")[0], 200)
         self.assertEqual(self.http("GET", f"/tt/lines?key={INGEST_KEY}")[0], 200)
         auth = "Basic " + base64.b64encode(f"me:{INGEST_KEY}".encode()).decode()
         self.assertEqual(self.http("GET", "/api/0/info", headers={"Authorization": auth})[0], 200)
-        # ...but can't write to ActivityWatch or open the web UI.
-        self.assertEqual(self.http("GET", "/", headers={"Authorization": auth})[0], 401)
 
     def test_mirror_copies_desktop_buckets_through_the_relay(self):
         from ttserver.mirror import mirror_once

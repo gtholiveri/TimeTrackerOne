@@ -126,9 +126,10 @@ and restarts it if it exits. In order:
    - Everything else: the ActivityWatch web UI and API, behind HTTP basic
      auth.
 
-   `TT_KEY` opens everything. `TT_INGEST_KEY` opens the two uploads and the
-   reads (logged as `phone`, for the app's data viewer), never writes or the
-   web UI, and is the one stored on the phone.
+   One key for everything: `TT_INGEST_KEY` opens all of it, like `TT_KEY`
+   (Gabe, 2026-11-23: no key juggling). It's built into the iOS app at
+   TestFlight build time (never committed: the repo is public), sealed on the
+   home server as `TT_READ_KEY`, and is what agents use.
 
 ### The desktop
 

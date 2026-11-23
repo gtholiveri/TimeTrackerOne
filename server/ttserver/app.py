@@ -2,9 +2,8 @@
 up to date. Also serves the ActivityWatch web UI behind the same key.
 
 Endpoints (KEY is TT_KEY; pass it as ?key=, a bearer token, or the password
-of HTTP basic auth). TT_INGEST_KEY, if set, works for the two POST endpoints
-and as a read key named "phone" (the app's data viewer reads with the key it
-already has), but never for writes, the web UI or the dashboard. Read keys
+of HTTP basic auth). TT_INGEST_KEY, if set, is the same as TT_KEY: one key
+for everything, the one on the phone and everywhere else. Read keys
 (TT_READ_KEYS="muse:KEY1,hermes:KEY2", one per agent) read and change
 nothing: the GET endpoints below and ActivityWatch's read API (GET /api/0/...,
 POST /api/0/query/). Each is logged by its name; dropping one from the list
@@ -208,9 +207,8 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
             return {k: v[-1] for k, v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
 
         def authorized(self, ingest: bool = False, read: bool = False) -> bool:
-            """The full key opens everything; the ingest key (if set) the upload
-            endpoints and what a read key opens; a read key only what reads and
-            changes nothing."""
+            """TT_KEY and TT_INGEST_KEY open everything; a read key only what
+            reads and changes nothing."""
             supplied = self.query().get("key")
             path = urllib.parse.urlsplit(self.path).path
             if path.startswith("/mcp/"):
@@ -226,12 +224,11 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
             self.agent = None
             if not supplied:
                 return False
-            keys = [key] + ([ingest_key] if ingest and ingest_key else [])
+            # One key for everything (Gabe, 2026-11-23): the phone's key opens
+            # all of it, like TT_KEY. Read keys stay for agents that have one.
+            keys = [key] + ([ingest_key] if ingest_key else [])
             if any(hmac.compare_digest(supplied.encode(), k.encode()) for k in keys):
                 return True
-            if ingest_key and hmac.compare_digest(supplied.encode(), ingest_key.encode()):
-                self.agent = "phone"  # the app's data viewer reads with the key it uploads with
-                return read
             for name, k in (read_keys or {}).items():
                 if hmac.compare_digest(supplied.encode(), k.encode()):
                     self.agent = name  # shown in the log, even when refused
