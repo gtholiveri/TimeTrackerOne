@@ -52,6 +52,81 @@ export interface LabelAnswer {
   model: string | null;
 }
 
+/** A categorized stretch from /tt/activity (the relay runs the dashboard's pipeline). */
+export interface ActivitySeg {
+  start: string;
+  end: string;
+  seconds: number;
+  device: string;
+  kind: "phone" | "desktop";
+  app: string;
+  title: string;
+  domain: string;
+  category: string;
+  rating: string;
+}
+
+export interface ActivityAnswer {
+  devices: { host: string; kind: string }[];
+  segments: ActivitySeg[];
+}
+
+/** A stretch spent in Claude, from /tt/claude/blocks. */
+export interface ClaudeBlock {
+  start: string;
+  end: string;
+  seconds: number;
+  devices: Record<string, number>;
+  where: Record<string, number>;
+  sessions: { title: string; surface: string; you: number; claude: number }[];
+  typed: { ts: string; session: string; text: string }[];
+  label: string | null;
+  summary: string | null;
+  kind: string | null;
+}
+
+export interface ClaudeBlocks {
+  blocks: ClaudeBlock[];
+  label_notes?: string[];
+}
+
+export interface WatchRun {
+  run: string;
+  dev: string;
+  first: string;
+  last: string;
+  lines: number;
+  ended: boolean;
+  hours: number;
+}
+
+export interface CoverageDay {
+  day: string;
+  ios: Record<string, number>;
+  ios_total: number;
+  safari: number;
+  devices: string[];
+  newest: string;
+}
+
+export interface Coverage {
+  last_received: Record<string, string>;
+  days: CoverageDay[];
+  watch_runs: WatchRun[];
+}
+
+/** One WHOOP record, whole, as WHOOP sends it, plus the kind. */
+export interface WhoopRecord {
+  kind: string;
+  start?: string;
+  end?: string | null;
+  created_at?: string;
+  sport_name?: string;
+  nap?: boolean;
+  score?: Record<string, unknown> | null;
+  [k: string]: unknown;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { credentials: "same-origin", ...init });
   if (!res.ok) throw new Error(`${init?.method ?? "GET"} ${path} failed: ${res.status} ${res.statusText}`);
@@ -60,6 +135,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const iso = (t: number) => new Date(t).toISOString();
+const enc = (t: number) => encodeURIComponent(iso(t));
 
 export const api = {
   buckets: () => request<Record<string, Bucket>>("/api/0/buckets/"),
@@ -73,6 +149,19 @@ export const api = {
       body: JSON.stringify(value),
     }),
   state: (hours = 1) => request<TTState>(`/tt/state?hours=${hours}`),
+  activity: (start: number, end: number, view: "attention" | "devices" = "devices") =>
+    request<ActivityAnswer>(`/tt/activity?start=${enc(start)}&end=${enc(end)}&view=${view}`),
+  claudeBlocks: (start: number, end: number) =>
+    request<ClaudeBlocks>(`/tt/claude/blocks?start=${enc(start)}&end=${enc(end)}`),
+  /** Raw phone lines, "tt|key=value|..." one per line. */
+  lines: async (start: number, end: number, kinds: string[]) => {
+    const res = await fetch(`/tt/lines?source=ios&start=${enc(start)}&end=${enc(end)}&kinds=${kinds.join(",")}`,
+      { credentials: "same-origin" });
+    if (!res.ok) throw new Error(`GET /tt/lines failed: ${res.status} ${res.statusText}`);
+    return (await res.text()).split("\n").filter(Boolean);
+  },
+  whoop: (kind: string, days: number) => request<WhoopRecord[]>(`/tt/whoop?kind=${kind}&days=${days}`),
+  coverage: (days: number) => request<Coverage>(`/tt/coverage?days=${days}`),
   labels: (blocks: LabelRequest[]) =>
     request<LabelAnswer>("/tt/labels", {
       method: "POST",

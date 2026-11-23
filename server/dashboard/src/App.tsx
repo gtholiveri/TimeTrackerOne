@@ -3,11 +3,13 @@ import { AppProvider } from "./lib/store";
 import { usePref } from "./components/usePref";
 import { Attention } from "./views/Attention";
 import { Categories } from "./views/Categories";
+import { Day } from "./views/Day";
 import { Explore } from "./views/Explore";
 import { Today } from "./views/Today";
 
 const ROUTES = {
   today: { label: "Today", view: Today },
+  day: { label: "Day", view: Day },
   explore: { label: "Explore", view: Explore },
   categories: { label: "Categories", view: Categories },
   attention: { label: "Attention", view: Attention },

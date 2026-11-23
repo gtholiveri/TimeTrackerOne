@@ -116,6 +116,9 @@ class AW:
         for k in range(0, len(events), 1000):  # keeps each request well under the relay's body limit
             self._req("POST", f"/buckets/{urllib.parse.quote(bucket_id)}/events", events[k:k + 1000])
 
+    def delete_bucket(self, bucket_id: str) -> None:
+        self._req("DELETE", f"/buckets/{urllib.parse.quote(bucket_id)}?force=1")
+
     def delete(self, bucket_id: str, event_id: int) -> None:
         self._req("DELETE", f"/buckets/{urllib.parse.quote(bucket_id)}/events/{event_id}")
 

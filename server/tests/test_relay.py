@@ -212,3 +212,29 @@ class GenericDeviceName(unittest.TestCase):
             self.assertTrue(all(f"dev={DEV}" in r for r in store.raw("ios", T0 - timedelta(hours=1))))
             ingest(relay, {}, early)  # a resend is still a duplicate
             self.assertEqual(len(store.raw("ios", T0 - timedelta(hours=1))), 3)
+
+    def test_generic_buckets_dropped_once_renamed(self):
+        class AW:
+            def __init__(self):
+                self.have = {"aw-watcher-window_iPhone": ("iPhone", "tt-relay"),
+                             "aw-watcher-window_Gabriels-iPhone": ("Gabriels-iPhone", "tt-relay"),
+                             "aw-watcher-window_laptop": ("iPhone", "aw-watcher-window")}  # not ours: kept
+
+            def buckets(self):
+                return {b: {"hostname": h, "client": c} for b, (h, c) in self.have.items()}
+
+            def delete_bucket(self, b):
+                del self.have[b]
+
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(f"{d}/tt.db")
+            aw = AW()
+            relay = Relay(store, aw)
+            relay.aw = aw
+            ingest(relay, {}, line(0, "open", cur="Safari").replace(f"dev={DEV}", "dev=iPhone"))
+            self.assertEqual(relay.drop_generic_buckets(), [])  # no real name yet: nothing to merge into
+            ingest(relay, {}, line(5, "start", run="1"))
+            self.assertTrue(relay.prune_generic)
+            self.assertEqual(relay.drop_generic_buckets(), ["aw-watcher-window_iPhone"])
+            self.assertEqual(sorted(aw.have), ["aw-watcher-window_Gabriels-iPhone", "aw-watcher-window_laptop"])
+            self.assertFalse(relay.prune_generic)

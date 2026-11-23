@@ -754,6 +754,16 @@ table.data .clip {
   margin: 0 6px;
 }
 
+.day-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 16px;
+}
+
+.day-stats .hero {
+  font-size: 30px;
+}
+
 .today-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);

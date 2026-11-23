@@ -175,6 +175,11 @@ through the relay and changes none of it:
 - **Today:** what each device is doing now, today's total split by category
   and by rating, and the day as one merged line or one lane per device. Works
   on the phone.
+- **Day:** one day with every stream on one clock: screen time per device,
+  Claude (each stretch's label, kind and summary, the sessions, what was
+  typed), places and GPS fixes, motion, WHOOP sleep, workouts and that
+  morning's recovery, and the TT Watch runs. Hover a bar for details; the
+  lists below give the same in full, with a map link for each place.
 - **Explore:** a filter row (range, attention or all device time, device,
   category, rating, search) above stat tiles, time per day or hour stacked by
   category, rating or device, a weekday-by-hour heatmap, a top table grouped

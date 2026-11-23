@@ -155,7 +155,8 @@ the relay's copy.
 key. It only reads ActivityWatch (the same API its web UI uses) and the live
 feed, and writes two settings: `classes` (ActivityWatch's own categories, with
 `score` as the productive / neutral / distracting rating) and `tt_attention`
-(the merge rules below). Tabs: Today (glance, phone-friendly), Explore
+(the merge rules below). Tabs: Today (glance, phone-friendly), Day (every
+stream on one clock: screen, Claude, places, motion, WHOOP, TT Watch), Explore
 (filters and plots), Categories (rule editor with live preview, uncategorized
 triage), Attention (the merge rules, with a preview).
 

@@ -109,6 +109,7 @@ class Relay:
         self.wake = threading.Event()
         self.last_error: str | None = None
         self.last_sync: float | None = None
+        self.prune_generic = True  # checked at start-up and after each rename
 
     def mark(self, dev: str, earliest: datetime | None) -> None:
         if earliest is None:
@@ -145,12 +146,30 @@ class Relay:
                     start = min(start, intervals[-1].start)
                 if self.aw is not None:
                     results[dev] = awsync.sync_device(self.aw, dev, intervals, pages, start, now + timedelta(days=1))
+            if self.prune_generic and self.aw is not None:
+                self.drop_generic_buckets()
         except Exception:
             for dev, ts in dirty.items():  # redo the same ranges next time
                 self.mark(dev, ts)
             raise
         self.last_sync = time.time()
         return results
+
+    def drop_generic_buckets(self) -> list[str]:
+        """Once the phone's real name is known its lines are renamed (adopt_generic) and
+        synced under it, so the buckets made earlier under "iPhone" only duplicate them
+        and show up as a second phone. Drop the ones this relay made."""
+        if self.store.real_device() is None:
+            return []
+        generic = {awsync.hostname(d) for d in GENERIC_DEVICES}
+        dropped = [b for b, info in self.aw.buckets().items()
+                   if info.get("client") == awsync.CLIENT and info.get("hostname") in generic]
+        for b in dropped:
+            self.aw.delete_bucket(b)
+        if dropped:
+            log("aw sync", f"dropped {', '.join(dropped)}: the phone's lines now sync under its real name")
+        self.prune_generic = False
+        return dropped
 
     def run_forever(self) -> None:
         while True:
@@ -500,6 +519,7 @@ def ingest(relay: Relay, q: dict[str, str], body: str) -> str:
     adopted = relay.store.adopt_generic()
     if adopted:
         relay.mark(*adopted)
+        relay.prune_generic = True
     devs = [relay.store.real_device() or d if d in GENERIC_DEVICES else d for d in devs]
     for dev in devs or ([q["dev"]] if q.get("dev") else []):
         relay.mark(dev, earliest)
