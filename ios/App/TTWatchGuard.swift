@@ -12,9 +12,11 @@
 // reads the current app every ~2 s and hands its lines over straight away
 // while the phone is unlocked, which it is when an app opens. So a live
 // watcher is heard within a few seconds of any switch. The app waits up to
-// 8 s for that. If nothing came, and nothing came in the 30 s before the
-// switch either (so a switch back to the very same app, which the watcher
-// doesn't report, can't fool it), the watcher is dead and the automation
+// 8 s for that. If nothing came, and nothing came in the 150 s before the
+// switch either (it beats about once a minute, so a live watcher is never
+// that quiet; this covers a switch back to the very same app, which it doesn't
+// report: 2026-11-23 19:35 started a needless second watcher with a 30 s
+// window and 6-minute beats), the watcher is dead and the automation
 // starts a new one. A close and the next open arrive together; one "yes" per
 // 2 minutes covers both. A watcher that reached the end of its loop counts as
 // dead straight away. (The first version only compared with the previous
@@ -42,8 +44,10 @@ enum TTWatchGuard {
     static let reportWait: TimeInterval = 8
     /// A close may be the phone locking: long enough for data protection to say so (~10 s).
     static let closeWait: TimeInterval = 15
-    /// Heard this recently before the switch: alive (covers same-app switches it doesn't report).
-    static let recent: TimeInterval = 30
+    /// Heard this recently before the switch: alive. TT Watch beats about once a
+    /// minute, so a live one is never quiet this long while unlocked; it covers
+    /// switches it doesn't report (back to the same app, Control Center).
+    static let recent: TimeInterval = 150
 
     private static let defaults = UserDefaults.standard
     private static let lock = NSLock()

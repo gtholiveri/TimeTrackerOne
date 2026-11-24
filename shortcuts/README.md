@@ -11,13 +11,13 @@ One shortcut, plus two automations that call the TimeTracker app directly:
 
 | Piece | What it does |
 | --- | --- |
-| [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | Polls lock state and the current app every ~2 s and logs changes, plus a heartbeat with the battery level. Keeps lines in memory while locked and hands them to the app (Log TT Lines) at the unlock. Runs until iOS stops it, or stops itself when the app says a newer copy took over. Asks nothing when you add it. |
+| [TT-Watch.shortcut](https://github.com/gtholiveri/TimeTrackerOne/releases/download/shortcuts/TT-Watch.shortcut) | Polls lock state and the current app every ~2 s and logs changes, plus a heartbeat with the battery level about once a minute. Keeps lines in memory while locked and hands them to the app (Log TT Lines) at the unlock. Runs until iOS stops it, or stops itself when the app says a newer copy took over. Asks nothing when you add it. |
 | "App is opened" automation | Get Current App → TimeTracker **Log App Opened** → If its result is true: Run Shortcut **TT-Watch**. |
 | "App is closed" automation | Get Current App → TimeTracker **Log App Closed** (locking counts as a close) → the same If. |
 
 **Keep-alive.** TT Watch answers every app switch within seconds, so Log App
-Opened/Closed can tell when it's dead: nothing heard in the 30 s before
-this switch, and nothing within 8 s after it. Then they return true (at most
+Opened/Closed can tell when it's dead: nothing heard in the 150 s before
+this switch (it beats about once a minute), and nothing within 8 s after it. Then they return true (at most
 once per 2 minutes) and the automation starts it, on the first switch after
 the watcher died. Never while the phone is locked: locking fires the closed
 automation, a locked watcher keeps its lines to itself, and starting TT Watch

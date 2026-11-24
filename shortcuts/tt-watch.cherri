@@ -3,7 +3,7 @@ TT Watch: the lock/app watcher. The TT Lock Buffer recipe from Trial 2, logging
 only changes.
 
 Every ~2 s it reads Device Is Locked and the current app. It adds a line when
-either changed, plus a heartbeat every 150 ticks (about 6 minutes), so a quiet
+either changed, plus a heartbeat every 25 ticks (about a minute; every 150 while locked), so a quiet
 stretch can be told apart from a dead watcher. Nothing is written while the
 phone is locked (that is what made TT Lock Direct fail): lines wait in memory
 and go to the TimeTracker app (Log TT Lines) as soon as Is Locked reads No.
@@ -56,7 +56,14 @@ repeat i for 100000 {
         @pending += 1
         @lastState = @state
     }
-    if @sinceBeat >= 150 {
+    // About once a minute while unlocked (so the app can tell a quiet watcher
+    // from a dead one); about every 6 minutes while locked, to keep the
+    // buffered lines small through a long lock.
+    @beatEvery = 150
+    if @lockedText == "No" {
+        @beatEvery = 25
+    }
+    if @sinceBeat >= @beatEvery {
         // Battery only while unlocked: nothing extra is read while locked.
         @battery = ""
         if @lockedText == "No" {
