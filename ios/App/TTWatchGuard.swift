@@ -27,9 +27,10 @@
 // keeps its lines to itself while the phone is locked, so it would look dead.
 // Starting TT Watch then fails anyway ("requires privacy permissions that
 // cannot be granted while your device is locked", seen 2026-11-23 15:50).
-// Data protection says the phone is locked about 10 s after the screen locks,
-// so a close waits up to 15 s and answers false once it does. An open waits
-// 8 s, and answers false if the phone is locked by then too.
+// So closes never ask for a start (since 2026-11-25: they had waited up to
+// 15 s for data protection to show the lock, which on plane Wi-Fi added to an
+// upload wait and timed out); only opens do, and an open also answers false
+// if data protection says the phone is locked.
 //
 // A false alarm would start a second watcher. The app keeps only the newest:
 // Log TT Lines answers "stop" to any other run, and TT Watch stops on it.
@@ -42,8 +43,6 @@ enum TTWatchGuard {
     static let cooldown: TimeInterval = 120
     /// How long to wait for the watcher to report this switch.
     static let reportWait: TimeInterval = 8
-    /// A close may be the phone locking: long enough for data protection to say so (~10 s).
-    static let closeWait: TimeInterval = 15
     /// Heard this recently before the switch: alive. TT Watch beats about once a
     /// minute, so a live one is never quiet this long while unlocked; it covers
     /// switches it doesn't report (back to the same app, Control Center).
@@ -114,26 +113,24 @@ enum TTWatchGuard {
     // MARK: - Log App Opened / Closed
 
     /// Called by the open/close actions. True when the automation should run TT Watch.
+    /// A close always answers false at once: it may be the phone locking, when
+    /// the watcher can't be heard and can't be started, and a close must never
+    /// make its automation wait. The next app open restarts a dead watcher.
     static func needsStart(close: Bool = false) async -> Bool {
         let now = Date()
         markInUse(now)
+        if close { return false }
         if await isLocked() { return false }
-        if let h = lastHeard, !lastEnded, now.timeIntervalSince(h) < recent { return false }
-        // Wait for the watcher to report this switch, or for the phone to turn out locked.
-        let deadline = now.addingTimeInterval(close ? closeWait : reportWait)
-        if !lastEnded && lastHeard != nil {
-            while Date() < deadline {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                if let h = lastHeard, h >= now.addingTimeInterval(-2) { return false }
-                if lastEnded { break }
-                if await isLocked() { return false }
-            }
-        } else if close {
-            // Never heard, or it ended: still make sure this close isn't a lock.
-            while Date() < deadline {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                if await isLocked() { return false }
-            }
+        if lastEnded || lastHeard == nil { return claimStart(now) }
+        if let h = lastHeard, now.timeIntervalSince(h) < recent { return false }
+        // Quiet for a while: wait (up to 8 s) for the watcher to report this
+        // open, or to hand over what it held while the phone was locked.
+        let deadline = now.addingTimeInterval(reportWait)
+        while Date() < deadline {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if let h = lastHeard, h >= now.addingTimeInterval(-2) { return false }
+            if lastEnded { break }
+            if await isLocked() { return false }
         }
         if await isLocked() { return false }
         return claimStart(now)
