@@ -1,8 +1,18 @@
-// The phone-side log: every line the app records (app opens/closes passed in
-// by Shortcuts, TT Watch's lines, location, motion) goes into one queue file
-// in the app's container first, then up to the relay's /tt/ingest. A failed
-// upload never surfaces: the lines stay queued and go with the next upload
-// that works. The relay drops duplicates, so sending a line twice is harmless.
+// The phone-side log, local first. Every line the app records (app opens and
+// closes passed in by Shortcuts, TT Watch's lines, location, motion) is written
+// to two files on the phone before anything else: the day's archive (kept,
+// for the viewer) and the upload queue. That is all a Shortcuts action waits
+// for: a file append, a few milliseconds. No action ever waits on the network.
+//
+// Uploading is the app's own job, separate from recording. The queue's oldest
+// lines (up to 2,000) move into an outbox file, and a background URLSession
+// uploads it to the relay's /tt/ingest. iOS runs that upload itself: it waits
+// for a connection, carries on while the app is suspended, and wakes the app
+// when it's done. Once the relay says 2xx the outbox file is deleted and the
+// next batch goes. A failed upload never surfaces anywhere: the batch stays in
+// the outbox and goes again at the next chance (any new line, the app coming
+// to the front, iOS relaunching the app). The relay drops duplicates, so
+// sending a batch twice is harmless.
 //
 // The queue file uses .completeUntilFirstUserAuthentication protection, so it
 // can be written while the phone is locked (after the first unlock since boot),
@@ -65,72 +75,75 @@ enum TTLine {
 actor TTLog {
     static let shared = TTLog()
 
+    static let batchSize = 2000
+    /// At most this many lines wait (about a month of heavy use); the oldest go first.
+    static let maxQueued = 200_000
+
+    private let dir: URL
     private let queueURL: URL
-    private var uploading = false
-    private var lastAttempt = Date.distantPast
+    private let outboxDir: URL
 
     init() {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         queueURL = dir.appendingPathComponent("tt-queue.txt")
+        outboxDir = dir.appendingPathComponent("tt-outbox", isDirectory: true)
+        try? FileManager.default.createDirectory(at: outboxDir, withIntermediateDirectories: true)
     }
 
-    /// Queued lines not yet confirmed by the relay.
+    /// Lines on the phone not yet confirmed by the relay (queue plus outbox).
     func pendingCount() -> Int {
-        readQueue().count
+        readLines(queueURL).count + outboxFiles().reduce(0) { $0 + readLines($1).count }
     }
 
-    /// Adds lines to the queue, then tries an upload. With uploadNow false
-    /// (GPS fixes, which come every few seconds while moving) it uploads only
-    /// if the last try was over a minute ago. Never throws.
-    func record(_ lines: [String], uploadNow: Bool = true) async {
+    /// Writes lines to the phone (archive and upload queue) and returns. The
+    /// upload is started in the background and never waited for. Never throws.
+    /// (uploadNow is kept for callers; uploads are background now either way.)
+    func record(_ lines: [String], uploadNow: Bool = true) {
         let clean = lines.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        if !clean.isEmpty {
-            append(clean)
-            TTArchive.append(clean)
+        guard !clean.isEmpty else { return }
+        TTArchive.append(clean)
+        appendToQueue(clean)
+        Task.detached(priority: .utility) { await TTLog.shared.sync() }
+    }
+
+    /// Starts uploading whatever is waiting, in the background. Returns at once.
+    func flush() {
+        Task.detached(priority: .utility) { await TTLog.shared.sync() }
+    }
+
+    /// Hands the outbox to the background upload session: every outbox file not
+    /// already uploading, or, when the outbox is empty, the queue's next batch.
+    func sync() async {
+        guard let url = ingestURL() else {
+            TTSettings.lastError = "No relay URL set yet"
+            return
         }
-        if uploadNow || Date().timeIntervalSince(lastAttempt) > 60 {
-            await flush()
+        let uploading = await TTUploader.shared.filesInFlight()
+        var files = outboxFiles()
+        if files.isEmpty, let batch = takeBatch() { files = [batch] }
+        for f in files where !uploading.contains(f.lastPathComponent) {
+            TTUploader.shared.upload(file: f, to: url)
         }
     }
 
-    /// Uploads everything queued, in batches. Stops quietly at the first failure.
-    func flush() async {
-        guard !uploading else { return }
-        uploading = true
-        lastAttempt = Date()
-        defer { uploading = false }
-        while true {
-            let queue = readQueue()
-            if queue.isEmpty { return }
-            guard let url = ingestURL() else {
-                TTSettings.lastError = "No relay URL set yet"
-                return
+    /// The upload session reports back.
+    func finished(file name: String, status: Int, error: String?) {
+        let file = outboxDir.appendingPathComponent(name)
+        if (200..<300).contains(status) {
+            try? FileManager.default.removeItem(at: file)
+            TTSettings.lastUploadOK = Date()
+            TTSettings.lastError = ""
+            // More waiting? Send the next batch.
+            if !readLines(queueURL).isEmpty || !outboxFiles().isEmpty {
+                Task.detached(priority: .utility) { await TTLog.shared.sync() }
             }
-            let batch = Array(queue.prefix(500))
-            var request = URLRequest(url: url, timeoutInterval: 15)
-            request.httpMethod = "POST"
-            request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
-            request.httpBody = batch.joined(separator: "\n").data(using: .utf8)
-            do {
-                let (_, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                    let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    TTSettings.lastError = "\(TTLine.timestamp()): relay answered HTTP \(code)"
-                    return
-                }
-                // Lines added while this batch was in flight are kept.
-                drop(batch.count)
-                TTSettings.lastUploadOK = Date()
-                TTSettings.lastError = ""
-            } catch {
-                TTSettings.lastError = "\(TTLine.timestamp()): \(error.localizedDescription)"
-                return
-            }
+        } else {
+            // Kept in the outbox; it goes again with the next sync.
+            TTSettings.lastError = "\(TTLine.timestamp()): " + (error ?? "relay answered HTTP \(status)")
         }
     }
 
-    // MARK: - queue file
+    // MARK: - files
 
     private func ingestURL() -> URL? {
         let base = TTSettings.relayURL
@@ -142,23 +155,99 @@ actor TTLog {
         return parts.url
     }
 
-    private func readQueue() -> [String] {
-        guard let data = try? Data(contentsOf: queueURL), let text = String(data: data, encoding: .utf8) else { return [] }
+    private static let protection: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+
+    private func readLines(_ url: URL) -> [String] {
+        guard let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else { return [] }
         return text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
     }
 
-    private func writeQueue(_ lines: [String]) {
-        // Keep at most ~50k lines (a few weeks offline) so the file can't grow forever.
-        let kept = lines.suffix(50_000)
-        let text = kept.isEmpty ? "" : kept.joined(separator: "\n") + "\n"
-        try? Data(text.utf8).write(to: queueURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    /// Appends without rewriting the file, so a long offline stretch stays cheap.
+    private func appendToQueue(_ lines: [String]) {
+        let data = Data((lines.joined(separator: "\n") + "\n").utf8)
+        if let h = try? FileHandle(forWritingTo: queueURL) {
+            defer { try? h.close() }
+            _ = try? h.seekToEnd()
+            try? h.write(contentsOf: data)
+        } else {
+            try? data.write(to: queueURL, options: Self.protection)
+        }
     }
 
-    private func append(_ lines: [String]) {
-        writeQueue(readQueue() + lines)
+    /// Moves the queue's oldest lines into a new outbox file. The outbox file is
+    /// written before the lines leave the queue, so nothing is lost if the app
+    /// stops in between (at worst a batch is sent twice).
+    private func takeBatch() -> URL? {
+        var queue = readLines(queueURL)
+        if queue.isEmpty { return nil }
+        if queue.count > Self.maxQueued { queue = Array(queue.suffix(Self.maxQueued)) }
+        let batch = queue.prefix(Self.batchSize)
+        let name = String(format: "%.0f", Date().timeIntervalSince1970 * 1000) + "-\(UUID().uuidString.prefix(8)).txt"
+        let file = outboxDir.appendingPathComponent(name)
+        do {
+            try Data((batch.joined(separator: "\n") + "\n").utf8).write(to: file, options: Self.protection)
+        } catch {
+            return nil
+        }
+        let rest = queue.dropFirst(batch.count)
+        try? Data((rest.isEmpty ? "" : rest.joined(separator: "\n") + "\n").utf8).write(to: queueURL, options: Self.protection)
+        return file
     }
 
-    private func drop(_ count: Int) {
-        writeQueue(Array(readQueue().dropFirst(count)))
+    private func outboxFiles() -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: outboxDir.path)) ?? []
+        return names.filter { $0.hasSuffix(".txt") }.sorted().map { outboxDir.appendingPathComponent($0) }
+    }
+}
+
+/// The background upload session. iOS performs the uploads, also while the app
+/// is suspended or not running, and waits for a network by itself.
+final class TTUploader: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    static let shared = TTUploader()
+    static let identifier = "com.gtholiveri.timetracker.upload"
+
+    /// Set by the app delegate when iOS wakes the app for finished uploads.
+    var backgroundCompletion: (() -> Void)?
+
+    private lazy var session: URLSession = {
+        let config = URLSessionConfiguration.background(withIdentifier: Self.identifier)
+        config.isDiscretionary = false
+        config.sessionSendsLaunchEvents = true
+        config.allowsCellularAccess = true
+        config.allowsExpensiveNetworkAccess = true
+        config.allowsConstrainedNetworkAccess = true
+        config.timeoutIntervalForResource = 7 * 24 * 3600
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
+
+    /// Makes sure the session exists (so iOS can deliver events for it after a relaunch).
+    func activate() { _ = session }
+
+    func filesInFlight() async -> Set<String> {
+        let tasks = await session.allTasks
+        return Set(tasks.filter { $0.state == .running || $0.state == .suspended }.compactMap(\.taskDescription))
+    }
+
+    func upload(file: URL, to url: URL) {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        let task = session.uploadTask(with: request, fromFile: file)
+        task.taskDescription = file.lastPathComponent
+        task.resume()
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let name = task.taskDescription else { return }
+        let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
+        let message = error?.localizedDescription
+        Task { await TTLog.shared.finished(file: name, status: error == nil ? status : 0, error: message) }
+    }
+
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        DispatchQueue.main.async {
+            self.backgroundCompletion?()
+            self.backgroundCompletion = nil
+        }
     }
 }

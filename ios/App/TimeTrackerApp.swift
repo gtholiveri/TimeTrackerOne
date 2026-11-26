@@ -7,7 +7,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Runs on every launch, including iOS relaunching the app in the
         // background for a location event: monitoring must be restarted.
         TTSensors.shared.start()
+        // The background upload session must exist at launch so iOS can report
+        // uploads it finished while the app wasn't running; then send what's waiting.
+        TTUploader.shared.activate()
+        Task { await TTLog.shared.flush() }
         return true
+    }
+
+    /// iOS relaunched the app because background uploads finished.
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        guard identifier == TTUploader.identifier else { return completionHandler() }
+        TTUploader.shared.backgroundCompletion = completionHandler
+        TTUploader.shared.activate()
     }
 }
 

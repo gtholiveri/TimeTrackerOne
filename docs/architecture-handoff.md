@@ -63,11 +63,18 @@ name, so Get Current App is what identifies the app. Locking the phone fires
 a close; unlocking fires nothing.
 
 **The TimeTracker app** (`ios/App/`, since 2026-11-21) owns the phone's
-network traffic. Its Shortcuts actions (`TTIntents.swift`) append lines to a
-queue file in the app's container (`TTLog.swift`, writable while locked after
-the first unlock) and try an upload to `/tt/ingest`; a failed upload leaves
-the lines queued for the next one. They never throw, so nothing shows an
-error banner offline. The app also records, with the app closed
+network traffic, and it is local first. Every line (Shortcuts actions in
+`TTIntents.swift`, and the app's own sensors) is appended to the day's archive
+and an upload queue in the app's container (`TTLog.swift`, writable while
+locked after the first unlock), and that is all an action waits for. No
+Shortcuts action ever waits on the network (until 2026-11-25 they waited for
+an inline upload, which timed out on plane Wi-Fi). Uploading is separate: the
+app moves up to 2,000 queued lines into an outbox file and a background
+URLSession posts it to `/tt/ingest`. iOS does that upload itself, waiting for
+a network and finishing it while the app is suspended; on 2xx the outbox file
+goes and the next batch follows. Failures are silent and retried at the next
+line, app launch or foreground. Actions never throw, so nothing shows an
+error banner offline. Shortcuts themselves make no network calls. The app also records, with the app closed
 (`TTSensors.swift`, needs Location "Always"):
 - `kind=visit` (arrive, depart, lat, lon) and `kind=loc` (a fix every ~500 m);
 - `kind=motion` (stationary, walking, running, cycling, automotive), read

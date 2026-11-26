@@ -99,7 +99,7 @@ struct LogAppClosedIntent: AppIntent {
 struct LogLinesIntent: AppIntent {
     static let title: LocalizedStringResource = "Log TT Lines"
     static let description = IntentDescription(
-        "Records ready-made tt| lines (one per line, as TT Watch writes them) and uploads them when there's network. Returns \"stop\" if a newer TT Watch has taken over, else \"ok\". Never fails."
+        "Saves ready-made tt| lines (one per line, as TT Watch writes them) on the phone and returns at once; the app uploads them in the background. Returns \"stop\" if a newer TT Watch has taken over, else \"ok\". Never fails."
     )
     static let openAppWhenRun = false
 
@@ -125,7 +125,7 @@ struct LogLinesIntent: AppIntent {
 
 struct SyncNowIntent: AppIntent {
     static let title: LocalizedStringResource = "Sync TimeTracker"
-    static let description = IntentDescription("Uploads anything TimeTracker still has queued. Never fails.")
+    static let description = IntentDescription("Starts a background upload of anything TimeTracker still has on the phone, and returns at once. Never fails.")
     static let openAppWhenRun = false
 
     @Parameter(title: "Device Name")
@@ -139,6 +139,6 @@ struct SyncNowIntent: AppIntent {
         await MainActor.run { TTSensors.shared.catchUpMotion() }
         await TTLog.shared.flush()
         let left = await TTLog.shared.pendingCount()
-        return .result(value: left == 0 ? "all sent" : "\(left) lines still queued")
+        return .result(value: left == 0 ? "all sent" : "\(left) lines on the phone, uploading in the background")
     }
 }
