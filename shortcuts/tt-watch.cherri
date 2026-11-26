@@ -3,8 +3,10 @@ TT Watch: the lock/app watcher. The TT Lock Buffer recipe from Trial 2, logging
 only changes.
 
 Every ~2 s it reads Device Is Locked and the current app. It adds a line when
-either changed, plus a heartbeat every 25 ticks (about a minute; every 150 while locked), so a quiet
-stretch can be told apart from a dead watcher. Nothing is written while the
+either changed, plus a heartbeat every 25 ticks (about a minute; every 150 while
+locked). While unlocked it also checks in with the app at least every 5 ticks
+(~12 s, a ping the app doesn't keep), so the app knows at any moment whether a
+watcher is alive. Nothing is written while the
 phone is locked (that is what made TT Lock Direct fail): lines wait in memory
 and go to the TimeTracker app (Log TT Lines) as soon as Is Locked reads No.
     tt|src=ios|kind=change|dev=<device>|run=<id>|ts=<time>|tick=<n>|locked=<Yes/No>|cur=<app>
@@ -21,8 +23,8 @@ files: the app is the only store on the phone. No relay URL either: the app
 already has it, so importing this shortcut asks nothing.
 
 Nobody needs to start it by hand. The "App is opened" / "App is closed"
-automations ask the app whether TT Watch is alive (it answers every app
-switch within seconds) and run it when it isn't. If that ever starts a second
+automations ask the app whether TT Watch is alive (it checks in every ~12 s
+while unlocked) and run it when it isn't. If that ever starts a second
 copy, Log TT Lines answers "stop" to the older one, which leaves.
 */
 
@@ -41,6 +43,7 @@ const battery0 = getBatteryLevel()
 @buffer += "tt|src=ios|kind=start|dev={dev}|run={run}|ts={started}|battery={battery0}"
 @pending = 1
 @sinceBeat = 0
+@sincePing = 0
 @lastState = "start"
 
 repeat i for 100000 {
@@ -50,6 +53,7 @@ repeat i for 100000 {
     @lockedText = "{locked}"
     @state = "{locked}|{cur}"
     @sinceBeat += 1
+    @sincePing += 1
 
     if @state != @lastState {
         @buffer += "tt|src=ios|kind=change|dev={dev}|run={run}|ts={ts}|tick={i}|locked={locked}|cur={cur}"
@@ -74,6 +78,17 @@ repeat i for 100000 {
         @pending += 1
         @sinceBeat = 0
     }
+    // While unlocked, check in with the app every 5 ticks (~12 s) even with
+    // nothing new, so it can tell at once whether this watcher is alive. The
+    // app keeps no ping lines; they only say "still here".
+    if @lockedText == "No" {
+        if @sincePing >= 5 {
+            if @pending == 0 {
+                @buffer += "tt|src=ios|kind=ping|dev={dev}|run={run}|ts={ts}|tick={i}"
+                @pending = 1
+            }
+        }
+    }
     if @lockedText == "No" {
         if @pending > 0 {
             // One text, not a list. The app queues and uploads it; it never
@@ -82,6 +97,7 @@ repeat i for 100000 {
             const logged = logLines("{lines}", "{dev}", "")
             @buffer = []
             @pending = 0
+            @sincePing = 0
             // A newer TT Watch took over (an automation started one when this
             // one looked dead): leave so only one runs.
             if logged == "stop" {

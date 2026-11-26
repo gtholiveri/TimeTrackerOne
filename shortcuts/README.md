@@ -15,21 +15,28 @@ One shortcut, plus two automations that call the TimeTracker app directly:
 | "App is opened" automation | Get Current App → TimeTracker **Log App Opened** → If its result is true: Run Shortcut **TT-Watch**. |
 | "App is closed" automation | Get Current App → TimeTracker **Log App Closed** (locking counts as a close) → the same If. |
 
-**Keep-alive.** TT Watch answers every app switch within seconds, so Log App
-Opened/Closed can tell when it's dead: nothing heard in the 150 s before
-this switch (it beats about once a minute), and nothing within 8 s after it. Then Log App Opened returns true (at most
-once per 2 minutes) and the automation starts it. Never while the phone is locked: locking fires the closed
-automation, a locked watcher keeps its lines to itself, and starting TT Watch
+**Keep-alive.** TT Watch checks in with the app at least every ~12 s while
+the phone is unlocked (a `kind=ping` line the app doesn't keep), so Log App
+Opened/Closed decide at once from what the app has already heard, with no
+waiting: heard in the last 25 s means alive; a close with nothing for 25 s
+means dead (an app was just in front, so the phone was unlocked); an open
+with nothing for 25 s means dead only if the watcher was already quiet at the
+previous open/close (otherwise the quiet stretch was a lock, and the watcher
+hands over its lines within a tick of the unlock). Then the action returns
+true (at most once per 2 minutes) and the automation starts TT Watch. Never
+while the phone reads as locked: data protection, or SpringBoard's lock state
+(logged as `lk=`, trusted once it has read both 0 and 1). Starting TT Watch
 while locked fails with "requires privacy permissions that cannot be granted
-while your device is locked". So Log App Closed always answers false at once
-(a close may be the lock) and only Log App Opened restarts a dead watcher, on
-the first app open after it died. No action ever waits on the network: the
-app saves the line on the phone and uploads it later in the background. Open/close
-lines carry `build=` (the app's build number). If a false
-alarm ever starts a second copy, Log TT Lines answers "stop" to the older one
-and it leaves. Never put a bare Run Shortcut in the automations: Run Shortcut
-waits for TT Watch to finish, so each switch would add another copy (9:19 to
-9:22 on 2026-11-23 made 8).
+while your device is locked", so a dead watcher found exactly at a lock may
+show that once; the next open starts it. Open/close lines carry `build=`,
+`watch=` (alive, dead, after-lock, locked, old-watcher), `start=`, `lk=` and
+`pda=`. A TT Watch from before the pings keeps the old rules (closes never
+start it; an open waits up to 8 s for it). No action ever waits on the
+network: the app saves the line on the phone and uploads it later in the
+background. If a false alarm ever starts a second copy, Log TT Lines answers
+"stop" to the older one and it leaves. Never put a bare Run Shortcut in the
+automations: Run Shortcut waits for TT Watch to finish, so each switch would
+add another copy (9:19 to 9:22 on 2026-11-23 made 8).
 
 Nothing here touches a file or the network. The app (`ios/`) queues every
 line and uploads it when there's network, so nothing shows an error banner.

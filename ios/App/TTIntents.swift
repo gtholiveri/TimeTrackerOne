@@ -55,11 +55,15 @@ struct LogAppEventIntent: AppIntent {
 /// automation's next step: If true, Run Shortcut "TT Watch".
 private func logAppEvent(_ kind: String, current: String?) async -> Bool {
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-    let line = TTLine.make(kind: kind, [("input", ""), ("cur", current ?? ""), ("build", build)])
-    async let start = TTWatchGuard.needsStart(close: kind == "close")  // starts now; the upload below can take a while
+    let at = Date()
+    let d = await TTWatchGuard.decide(close: kind == "close")
+    let line = TTLine.make(kind: kind, at: at, [
+        ("input", ""), ("cur", current ?? ""), ("build", build),
+        ("watch", d.why), ("start", d.start ? "1" : "0"), ("lk", d.lockState), ("pda", d.protectedData),
+    ])
     await TTLog.shared.record([line])
     await MainActor.run { TTSensors.shared.catchUpMotion() }
-    return await start
+    return d.start
 }
 
 struct LogAppOpenedIntent: AppIntent {
@@ -117,8 +121,12 @@ struct LogLinesIntent: AppIntent {
         applySettings(relay: relay, device: device)
         let split = (lines ?? "").split(whereSeparator: \.isNewline).map(String.init)
         let answer = TTWatchGuard.heard(split)
-        await TTLog.shared.record(split)
-        await MainActor.run { TTSensors.shared.catchUpMotion() }
+        // TT Watch's pings (every ~12 s while unlocked) only say it's alive: not kept.
+        let keep = split.filter { TTWatchGuard.field("kind", in: $0) != "ping" }
+        if !keep.isEmpty {
+            await TTLog.shared.record(keep)
+            await MainActor.run { TTSensors.shared.catchUpMotion() }
+        }
         return .result(value: answer)
     }
 }
