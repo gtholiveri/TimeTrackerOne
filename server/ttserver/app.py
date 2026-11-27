@@ -31,7 +31,7 @@ revokes it alone:
         label, summary and kind of what was actually going on.
     GET  /tt/story?key=KEY[&day=YYYY-MM-DD][&refresh=1]
         The story of the day (today by default), written from all of its
-        data at midday and once the day is verifiably over, newest first. refresh=1 (not with a read
+        data at midday and once you're verifiably asleep, newest first. refresh=1 (not with a read
         key) writes one now (daystory.py).
     GET  /tt/coverage?key=KEY[&days=7][&tz=..]
         What arrived per local day (counts per kind, devices) and every TT

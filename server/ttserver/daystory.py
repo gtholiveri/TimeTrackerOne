@@ -2,7 +2,8 @@
 day and has the LLM chain write what happened, as a short structured piece
 Gabe can read on the dashboard, in the app, or through MCP. Twice a day:
 midday (6 hours after the day's first activity) and at the end of the day,
-once it is verifiably over (every device quiet for 2 hours, past 6 PM).
+once it is verifiably over: asleep, by WHOOP's sleep or 4 quiet hours through
+the small hours.
 
 Inputs, compacted so one call stays small: the day's totals (activity.summary),
 the attention line collapsed into stretches (category, app, the longest title
@@ -41,11 +42,13 @@ CREATE INDEX IF NOT EXISTS stories_by_day ON stories (day, created);
 """
 
 # When stories are written. Midday: 6 hours after the day's first activity. End: once the day is
-# verifiably over, meaning every device (laptop input, phone unlocked) has been quiet for 2 hours at
-# a stretch that reaches past 6 PM. The story then covers up to the last activity, past 4 AM if the
-# night ran late, and the next day's story starts from there.
+# verifiably over, meaning you're asleep: WHOOP's main sleep of the night, or, without one, every
+# device (laptop input, phone unlocked) quiet for 4 hours through part of 2-8 AM. The story then
+# covers up to the last activity before sleep, past 4 AM if the night ran late, and the next day's
+# story starts from there.
 MIDDAY_AFTER = timedelta(hours=6)
-QUIET = timedelta(hours=2)
+ASLEEP = timedelta(hours=4)
+NIGHT = (2, 8)                   # local hours of the next morning that a sleep must reach into
 EVENING_HOUR = 18
 LOOK = timedelta(hours=40)       # how far past a day's start its end is looked for
 TZ = "America/Los_Angeles"
@@ -243,9 +246,27 @@ def _merge_days(days: list[dict]) -> dict:
     return out
 
 
-def bounds(relay, day: str, now: datetime, tz_name: str = TZ) -> dict:
+def _main_sleep(whoop, ds: datetime, evening: datetime) -> datetime | None:
+    """When the night's main sleep began, from WHOOP (it posts a sleep once you wake up): the first
+    sleep that isn't a nap and starts after 6 PM of the day."""
+    if whoop is None:
+        return None
+    for r in whoop.records("sleep", ds):
+        if r.get("nap"):
+            continue
+        t = parse_ts(r.get("start"))
+        if t and evening <= t < ds + LOOK and r.get("end"):
+            return t
+    return None
+
+
+def bounds(relay, day: str, now: datetime, tz_name: str = TZ, whoop=None) -> dict:
     """Where a tracking day's story starts (its 4 AM, or where the previous day's story ended if that
-    ran later), its first activity, and when it verifiably ended (None while it hasn't)."""
+    ran later), its first activity, and when it verifiably ended (None while it hasn't).
+
+    Verifiably over means asleep: WHOOP's main sleep for the night, or, without one, every device
+    quiet for 4 hours through part of 2-8 AM. A long evening away from screens (dinner, a party)
+    doesn't end the day; the night session after it belongs to it."""
     tz = activity.zone(tz_name)
     ds = _day_start(day, tz)
     start = ds
@@ -266,13 +287,21 @@ def bounds(relay, day: str, now: datetime, tz_name: str = TZ) -> dict:
         else:
             spans.append([a, b])
     evening = datetime(ds.year, ds.month, ds.day, EVENING_HOUR, tzinfo=tz)
-    # The first quiet stretch of 2 hours that reaches past 6 PM ends the day, at the activity before it.
-    ended, last = None, start
-    for a, b in spans + [[scan_end, scan_end]]:
-        if a - max(last, evening) >= QUIET:
-            ended = last
-            break
-        last = max(last, b)
+    nxt = (ds + timedelta(hours=24)).date()
+    night = (datetime(nxt.year, nxt.month, nxt.day, NIGHT[0], tzinfo=tz),
+             datetime(nxt.year, nxt.month, nxt.day, NIGHT[1], tzinfo=tz))
+    ended = None
+    slept = _main_sleep(whoop, ds, evening)
+    if slept is not None:
+        before = [b for a, b in spans if a < slept]
+        ended = min(max(before), slept) if before else slept
+    else:
+        last = start
+        for a, b in spans + [[scan_end, scan_end]]:
+            if a - last >= ASLEEP and last < night[1] and a > night[0]:
+                ended = last
+                break
+            last = max(last, b)
     first = spans[0][0] if spans and (ended is None or spans[0][0] < ended) else None
     return {"start": start, "first_active": first, "ended": ended}
 
@@ -352,7 +381,7 @@ def write(relay, whoop, labeler, slot: str, day: str, start: datetime, end: date
 def write_now(relay, whoop, labeler, day: str, now: datetime | None = None) -> dict:
     """An on-demand story: the day so far, or the whole day if it's over."""
     now = now or datetime.now(timezone.utc)
-    b = bounds(relay, day, now)
+    b = bounds(relay, day, now, whoop=whoop)
     end = b["ended"] if b["ended"] and b["ended"] > b["start"] else min(now, b["start"] + LOOK)
     return write(relay, whoop, labeler, "manual", day, b["start"], end, now=now)
 
@@ -361,7 +390,7 @@ def today(now: datetime, tz_name: str = TZ) -> str:
     return activity.day_start(now, activity.zone(tz_name), "04:00").date().isoformat()
 
 
-def due(relay, now: datetime, tz_name: str = TZ) -> tuple[str, str, datetime, datetime] | None:
+def due(relay, now: datetime, tz_name: str = TZ, whoop=None) -> tuple[str, str, datetime, datetime] | None:
     """(day, slot, start, end) of a story that should exist by now and doesn't, else None.
     Yesterday's end story comes first: a late night is still yesterday."""
     tz = activity.zone(tz_name)
@@ -371,7 +400,7 @@ def due(relay, now: datetime, tz_name: str = TZ) -> tuple[str, str, datetime, da
         have = {s["slot"] for s in stories(relay.store, day)}
         if "end" in have:
             continue
-        b = bounds(relay, day, now, tz_name)
+        b = bounds(relay, day, now, tz_name, whoop)
         if b["ended"] and b["first_active"]:
             return day, "end", b["start"], b["ended"]
         if (day == cur and not have & {"midday"} and b["first_active"]
@@ -387,7 +416,7 @@ def run_forever(relay, whoop, labeler, log=print, every: float = 600) -> None:
         try:
             if relay.aw is None or not labeler.chain:
                 continue
-            got = due(relay, datetime.now(timezone.utc))
+            got = due(relay, datetime.now(timezone.utc), whoop=whoop)
             if got:
                 out = write(relay, whoop, labeler, got[1], got[0], got[2], got[3])
                 log("day story:", got[0], got[1], "by", out["model"])

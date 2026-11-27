@@ -488,7 +488,7 @@ private struct StorySection: View {
                     }
                 }
             } else {
-                Text("No story yet. One is written 6 hours into the day, and the last once you've been off every screen for 2 hours after 6 PM.")
+                Text("No story yet. One is written 6 hours into the day, and the last once you're asleep (WHOOP's sleep, or 4 quiet hours overnight).")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             if let error { Text(error).font(.footnote).foregroundStyle(.red) }

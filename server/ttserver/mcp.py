@@ -53,7 +53,7 @@ TOOLS = [
           "(productive, mixed, unproductive) and a one-line summary.",
           {**_RANGE}),
     _tool("get_day_story", "The story of a day: what happened, written from all of the day's data at midday "
-          "and once the day is verifiably over (every device quiet for 2 hours past 6 PM) (headline, how it went, numbers, worth noticing). Newest first.",
+          "and once the day is verifiably over (asleep: WHOOP's sleep, or every device quiet 4 h through 2-8 AM) (headline, how it went, numbers, worth noticing). Newest first.",
           {"day": {"type": "string", "description": "YYYY-MM-DD, default today."}}),
     _tool("get_claude_messages", "Gabe's Claude messages (and Claude's replies) in time order, from every "
           "surface the laptop's Claude login sees.",

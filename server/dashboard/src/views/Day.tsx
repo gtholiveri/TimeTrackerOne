@@ -653,7 +653,7 @@ function StoryCard({ day, isToday }: { day: string; isToday: boolean }) {
       ) : !story ? (
         <div className="empty">
           {isToday
-            ? "Nothing yet: one is written 6 hours into the day, and the last once you've been off every screen for 2 hours after 6 PM."
+            ? "Nothing yet: one is written 6 hours into the day, and the last once you're asleep (WHOOP's sleep, or 4 quiet hours overnight)."
             : "No story was written for this day."}
         </div>
       ) : (

@@ -77,30 +77,52 @@ class DayStory(unittest.TestCase):
 
     def test_due_follows_the_day(self):
         # Activity 10:00-11:30 PST on 2026-11-01 (T0 is 10:00 PST). Midday comes 6 h after the first
-        # activity; the end once every device has been quiet for 2 h reaching past 6 PM.
+        # activity. A quiet evening doesn't end the day; 4 quiet hours reaching into 2-8 AM do.
         at = lambda h, m=0: T0 + timedelta(hours=h - 10, minutes=m)  # noqa: E731  (local PST hour)
         self.assertIsNone(daystory.due(self.relay, at(15, 59)))
         self.assertEqual(daystory.due(self.relay, at(16, 1))[:2], ("2026-11-01", "midday"))
-        self.assertEqual(daystory.due(self.relay, at(19, 59))[:2], ("2026-11-01", "midday"))
-        day, slot, start, end = daystory.due(self.relay, at(20, 1))
+        self.assertEqual(daystory.due(self.relay, at(23, 59))[:2], ("2026-11-01", "midday"))
+        day, slot, start, end = daystory.due(self.relay, at(26, 1))  # 2:01 AM
         self.assertEqual((day, slot), ("2026-11-01", "end"))
         self.assertEqual(end, T0 + timedelta(minutes=90))  # the last activity
-        daystory.write(self.relay, None, self.labeler, slot, day, start, end, now=at(20, 1))
-        self.assertIsNone(daystory.due(self.relay, at(20, 1)))
+        daystory.write(self.relay, None, self.labeler, slot, day, start, end, now=at(26, 1))
+        self.assertIsNone(daystory.due(self.relay, at(26, 1)))
+
+    def add_laptop(self, from_h, hours):
+        t = (T0 + timedelta(hours=from_h - 10)).isoformat()
+        self.relay.aw.store["aw-watcher-window_laptop"].append(
+            {"timestamp": t, "duration": hours * 3600, "data": {"app": "Code.exe", "title": "x"}})
+        self.relay.aw.store["aw-watcher-afk_laptop"].append(
+            {"timestamp": t, "duration": hours * 3600, "data": {"status": "not-afk"}})
+
+    def test_evening_away_then_a_night_session(self):
+        # Off every screen 11:30-22:54 (dinner), back on until 23:48: the night session is part of the day.
+        self.add_laptop(23, 0.75)
+        now = T0 + timedelta(hours=14)  # 00:00
+        self.assertIsNone(daystory.bounds(self.relay, "2026-11-01", now)["ended"])
+        now = T0 + timedelta(hours=18)  # 4:00, quiet since 23:45
+        self.assertEqual(daystory.bounds(self.relay, "2026-11-01", now)["ended"], T0 + timedelta(hours=13, minutes=45))
 
     def test_late_night_belongs_to_the_day(self):
         # On the laptop from 18:00 until 5:00 the next morning: the day ends there, not at 4 AM.
-        self.relay.aw.store["aw-watcher-window_laptop"].append(
-            {"timestamp": (T0 + timedelta(hours=8)).isoformat(), "duration": 11 * 3600, "data": {"app": "Code.exe", "title": "x"}})
-        self.relay.aw.store["aw-watcher-afk_laptop"].append(
-            {"timestamp": (T0 + timedelta(hours=8)).isoformat(), "duration": 11 * 3600, "data": {"status": "not-afk"}})
-        now = T0 + timedelta(hours=21, minutes=30)  # 7:30 PST on 11-02
+        self.add_laptop(18, 11)
+        now = T0 + timedelta(hours=23, minutes=30)  # 9:30 PST on 11-02
         b = daystory.bounds(self.relay, "2026-11-01", now)
         self.assertEqual(b["ended"], T0 + timedelta(hours=19))  # 5:00 PST
         day, slot, start, end = daystory.due(self.relay, now)
         self.assertEqual((day, slot, end), ("2026-11-01", "end", T0 + timedelta(hours=19)))
         daystory.write(self.relay, None, self.labeler, slot, day, start, end, now=now)
         self.assertEqual(daystory.bounds(self.relay, "2026-11-02", now)["start"], T0 + timedelta(hours=19))
+
+    def test_whoop_sleep_ends_the_day(self):
+        # WHOOP says asleep at 0:30 after a session until 0:20: ended at 0:20, even with no long quiet yet.
+        self.add_laptop(23, 1 + 1 / 3)
+        sleep = {"kind": "sleep", "nap": False, "start": (T0 + timedelta(hours=14, minutes=30)).isoformat(),
+                 "end": (T0 + timedelta(hours=22)).isoformat()}
+        whoop = SimpleNamespace(records=lambda kind, since: [sleep] if kind == "sleep" else [])
+        now = T0 + timedelta(hours=22, minutes=10)
+        b = daystory.bounds(self.relay, "2026-11-01", now, whoop=whoop)
+        self.assertEqual(b["ended"], T0 + timedelta(hours=14, minutes=20))
 
 
 if __name__ == "__main__":
