@@ -10,9 +10,12 @@ claude) and the text. They're kept here, one row per message.
 GET /tt/claude/blocks then takes the activity timeline, finds every stretch
 spent in Claude (the desktop app, claude.ai in a browser, a terminal running
 Claude Code, the phone app), and attaches the messages written during it:
-which sessions, what he typed, and a label, a blunt one-sentence summary
-and a kind (building, debugging, planning, ..., tinkering, venting) written
-by the same free LLM chain as the dashboard's labels and cached.
+which sessions, what he typed, and a structured label written by the same
+LLM chain as the dashboard's labels and cached: project, goal (label is
+"project: goal"), kind (building, debugging, planning, ..., tinkering,
+venting), verdict (productive, mixed, unproductive) and a one-sentence
+summary. A block is a whole sitting: time away from Claude under 20 minutes
+doesn't end it.
 """
 
 from __future__ import annotations
@@ -44,11 +47,13 @@ CREATE INDEX IF NOT EXISTS claude_by_time ON claude (ts);
 MAX_TEXT = {"you": 4000, "claude": 1500}
 CLAUDE_APP = re.compile(r"claude", re.I)
 CLAUDE_SITE = re.compile(r"(^|\.)claude\.(ai|com)$", re.I)
-MERGE_GAP = 300        # seconds between Claude segments that still make one block
+MERGE_GAP = 1200       # seconds away from Claude that still continue one block (a trip to the editor or a video)
 MIN_BLOCK = 60         # seconds of Claude in a block, or it's dropped
 SLACK = timedelta(minutes=2)  # messages this close to a block's edges belong to it
 KINDS = ["building", "debugging", "planning", "research", "learning", "writing", "admin",
          "tinkering", "venting", "other"]
+VERDICTS = ["productive", "mixed", "unproductive"]
+LABEL_VERSION = "claude2"  # bump when SYSTEM changes, so cached labels are redone
 
 
 def ensure(store) -> None:
@@ -153,13 +158,21 @@ def blocks(aw, store, labeler, q: dict[str, str]) -> dict:
 
 
 SYSTEM = (
-    "You review someone's own Claude usage for their personal time tracker. For each block you get how long "
-    "they spent in Claude, the session titles, and the messages they typed (plus a little of Claude's replies). "
-    "Say plainly what they were actually doing, the way a blunt friend reading over their shoulder would: "
-    "if it was productive work, name the project and the task; if it was fiddling with tooling, arguing with "
-    "the assistant, redoing setup, or a distraction, say so. Answer with only a JSON object mapping each "
-    "block id to {\"label\": at most 8 words, \"summary\": one sentence, \"kind\": one of "
-    + ", ".join(KINDS) + "}."
+    "You label blocks of someone's own Claude usage for their personal time tracker. Each block is one sitting "
+    "(possibly over an hour, across several sessions): how long it lasted, the session titles, the messages "
+    "they typed, and the end of Claude's replies.\n\n"
+    "Label the sitting as a whole, at the level of the project and the goal, not the individual steps or "
+    "fixes. Several sessions on one project are one goal. Be blunt: if it was fiddling with tooling, arguing "
+    "with the assistant, redoing setup or a distraction, say so.\n\n"
+    "Answer with only a JSON object mapping each block id to an object with exactly these fields:\n"
+    "- \"project\": the project's short everyday name, the same name every time it comes up (for example "
+    "\"TimeTracker\", \"Hermes\", \"PHYS 152\"); \"Personal\" or \"Misc\" if there is none.\n"
+    "- \"label\": 2 to 5 words naming the goal, without the project name (\"Phone keep-alive\", "
+    "\"Lab 6 report\").\n"
+    "- \"kind\": one of " + ", ".join(KINDS) + ".\n"
+    "- \"verdict\": one of " + ", ".join(VERDICTS) + ".\n"
+    "- \"summary\": one sentence of at most 20 words: what they set out to do, then how it went.\n"
+    "No other text, no markdown."
 )
 
 
@@ -179,10 +192,10 @@ def describe(labeler, result: list[dict]) -> list[str]:
     todo = []
     for b in result:
         if not b["_msgs"]:
-            b.update(label=None, summary=None, kind=None)
+            b.update(label=None, summary=None, kind=None, project=None, goal=None, verdict=None)
             continue
         p = _block_prompt(b)
-        key = "claude:" + hashlib.sha256(json.dumps(p, sort_keys=True).encode()).hexdigest()[:32]
+        key = LABEL_VERSION + ":" + hashlib.sha256(json.dumps(p, sort_keys=True).encode()).hexdigest()[:32]
         hit = labeler.cached([key]).get(key)
         if hit:
             b.update(json.loads(hit[0]))
@@ -217,7 +230,7 @@ def describe(labeler, result: list[dict]) -> list[str]:
             labeler.remember(rows)
             break
     for b in result:
-        for k in ("label", "summary", "kind"):
+        for k in ("label", "summary", "kind", "project", "goal", "verdict"):
             b.setdefault(k, None)
     return notes
 
@@ -236,6 +249,11 @@ def _parse(text: str, ids: list[str]) -> dict[str, dict]:
         if not isinstance(v, dict) or not isinstance(v.get("label"), str):
             continue
         kind = v.get("kind") if v.get("kind") in KINDS else "other"
-        out[bid] = {"label": " ".join(v["label"].split()[:10]), "summary": str(v.get("summary") or "")[:300],
-                    "kind": kind}
+        project = " ".join(str(v.get("project") or "").split()[:4]) or None
+        label = " ".join(v["label"].split()[:6])
+        verdict = v.get("verdict") if v.get("verdict") in VERDICTS else None
+        out[bid] = {"project": project, "goal": label,
+                    "label": f"{project}: {label}" if project else label,
+                    "summary": " ".join(str(v.get("summary") or "").split())[:200],
+                    "kind": kind, "verdict": verdict}
     return out

@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 
-from . import claudelog, coverage
+from . import claudelog, coverage, daystory
 
 PROTOCOL = "2025-06-18"
 
@@ -49,8 +49,12 @@ TOOLS = [
           {**_RANGE, "view": {"type": "string", "enum": ["attention", "devices"]},
            "min_seconds": {"type": "number", "description": "Drop segments shorter than this."}}),
     _tool("get_claude_blocks", "Every stretch Gabe spent in Claude (desktop, claude.ai, Claude Code, phone) with "
-          "the sessions, what he typed, and a blunt label, summary and kind of what he was actually doing.",
+          "the sessions, what he typed, and a structured label of each sitting: project, goal, kind, verdict "
+          "(productive, mixed, unproductive) and a one-line summary.",
           {**_RANGE}),
+    _tool("get_day_story", "The story of a day: what happened, written from all of the day's data at midday "
+          "and once the day is verifiably over (every device quiet for 2 hours past 6 PM) (headline, how it went, numbers, worth noticing). Newest first.",
+          {"day": {"type": "string", "description": "YYYY-MM-DD, default today."}}),
     _tool("get_claude_messages", "Gabe's Claude messages (and Claude's replies) in time order, from every "
           "surface the laptop's Claude login sees.",
           {**_HOURS, "who": {"type": "string", "enum": ["you", "claude"], "description": "Only one side."}}),
@@ -98,6 +102,9 @@ def call(relay, whoop, name: str, args: dict, state_json, activity_mod, labeler=
         if relay.aw is None:
             raise ValueError("ActivityWatch isn't connected on the relay")
         return claudelog.blocks(relay.aw, relay.store, labeler, _q(args))
+    if name == "get_day_story":
+        day = args.get("day") or daystory.today(datetime.now(timezone.utc))
+        return {"day": day, "stories": daystory.stories(relay.store, day)}
     if name == "get_claude_messages":
         now = datetime.now(timezone.utc)
         return claudelog.events(relay.store, _since(args), now, args.get("who"))

@@ -12,6 +12,7 @@ import {
   type ClaudeBlock,
   type ClaudeBlocks,
   type Coverage,
+  type DayStory,
   type WhoopRecord,
 } from "../lib/api";
 import { fixTimes, motionStretches, parseLine, pauses, visits, type Line, type Stretch, type Visit } from "../lib/fused";
@@ -128,7 +129,9 @@ function claudeTip(b: ClaudeBlock): ReactNode {
   return (
     <>
       <div className="t-title">{b.label ?? "Claude"}</div>
-      <div className="small secondary">{range(s, e)} · {mins(e - s)}{b.kind ? ` · ${b.kind}` : ""}</div>
+      <div className="small secondary">
+        {range(s, e)} · {mins(e - s)}{b.kind ? ` · ${b.kind}` : ""}{b.verdict ? ` · ${b.verdict}` : ""}
+      </div>
       {b.summary && <p className="small" style={{ margin: "6px 0" }}>{b.summary}</p>}
       {b.sessions.slice(0, 4).map((x) => (
         <Row key={x.title + x.surface} k={x.title} v={`${x.you} typed`} />
@@ -356,6 +359,8 @@ export function Day() {
 
       {data?.errors.map((e) => <div key={e} className="card error">{e}</div>)}
 
+      <StoryCard day={localDate(day)} isToday={isToday} />
+
       <div className="day-stats">
         <Stat label="On screens" value={totals ? fmtDuration(totals.screen) : "…"} />
         <Stat label="In Claude" value={totals ? fmtDuration(totals.claude) : "…"} />
@@ -467,10 +472,19 @@ function ClaudeList({ blocks }: { blocks: ClaudeBlock[] }) {
                       <td>{range(s, e)}</td>
                       <td className="r">{fmtDuration(b.seconds)}</td>
                       <td>
-                        <div>{b.label ?? <span className="muted">No label</span>}</div>
+                        <div>
+                          {b.project && b.goal ? (
+                            <><strong>{b.project}</strong> · {b.goal}</>
+                          ) : (
+                            b.label ?? <span className="muted">No label</span>
+                          )}
+                        </div>
                         {b.summary && <div className="small secondary">{b.summary}</div>}
                       </td>
-                      <td>{b.kind ?? ""}</td>
+                      <td>
+                        {b.kind ?? ""}
+                        {b.verdict && <div className={`small verdict-${b.verdict}`}>{b.verdict}</div>}
+                      </td>
                       <td className="small">{b.sessions.map((x) => x.title).join(", ") || <span className="muted">none synced</span>}</td>
                     </tr>
                     {isOpen && (
@@ -586,5 +600,104 @@ function RunsList({ runs, coverage, day }: { runs: Coverage["watch_runs"]; cover
         </table>
       )}
     </div>
+  );
+}
+
+/** YYYY-MM-DD of a tracking day's start, in the browser's time zone. */
+const localDate = (ms: number) => new Date(ms).toLocaleDateString("en-CA");
+
+/** The day's story (newest of the midday, evening or on-demand ones), with a button to write one now. */
+function StoryCard({ day, isToday }: { day: string; isToday: boolean }) {
+  const [stories, setStories] = useState<DayStory[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setStories(null);
+    setShown(0);
+    api.stories(day).then((r) => live && setStories(r.stories), (e: Error) => live && setError(e.message));
+    return () => {
+      live = false;
+    };
+  }, [day]);
+  const write = () => {
+    setBusy(true);
+    setError(null);
+    api.stories(day, true).then(
+      (r) => {
+        setStories(r.stories);
+        setShown(0);
+      },
+      (e: Error) => setError(e.message),
+    ).finally(() => setBusy(false));
+  };
+  const story = stories?.[shown];
+  return (
+    <div className="card story">
+      <div className="story-head">
+        <h2>The story of the day</h2>
+        <span className="spacer" style={{ flex: 1 }} />
+        {stories && stories.length > 1 && (
+          <select value={shown} onChange={(e) => setShown(Number(e.target.value))} aria-label="Which story">
+            {stories.map((s, i) => (
+              <option key={s.created} value={i}>{s.slot} · {fmtTime(Date.parse(s.created))}</option>
+            ))}
+          </select>
+        )}
+        <button className="btn" onClick={write} disabled={busy}>{busy ? "Writing…" : "Write it now"}</button>
+      </div>
+      {error && <div className="small error">{error}</div>}
+      {!stories ? (
+        <div className="empty">Loading…</div>
+      ) : !story ? (
+        <div className="empty">
+          {isToday
+            ? "Nothing yet: one is written 6 hours into the day, and the last once you've been off every screen for 2 hours after 6 PM."
+            : "No story was written for this day."}
+        </div>
+      ) : (
+        <>
+          <Markdown text={story.text} />
+          <div className="small muted">Written {fmtTime(Date.parse(story.created))} ({story.slot}) by {story.model ?? "?"}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The little Markdown a story uses: ### headings, - bullets, paragraphs, **bold**. */
+function Markdown({ text }: { text: string }) {
+  const blocks: ReactNode[] = [];
+  let bullets: string[] = [];
+  let para: string[] = [];
+  const flush = () => {
+    if (para.length) blocks.push(<p key={blocks.length}>{inline(para.join(" "))}</p>);
+    if (bullets.length) blocks.push(<ul key={blocks.length}>{bullets.map((b, i) => <li key={i}>{inline(b)}</li>)}</ul>);
+    para = [];
+    bullets = [];
+  };
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) {
+      flush();
+    } else if (/^#{1,4} /.test(line)) {
+      flush();
+      blocks.push(<h3 key={blocks.length}>{inline(line.replace(/^#+ /, ""))}</h3>);
+    } else if (/^[-*] /.test(line)) {
+      if (para.length) flush();
+      bullets.push(line.slice(2));
+    } else {
+      if (bullets.length) flush();
+      para.push(line);
+    }
+  }
+  flush();
+  return <div className="story-text">{blocks}</div>;
+}
+
+function inline(s: string): ReactNode[] {
+  return s.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") ? <strong key={i}>{part.slice(2, -2)}</strong> : part,
   );
 }

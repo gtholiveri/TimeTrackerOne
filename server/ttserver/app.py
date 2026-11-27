@@ -29,6 +29,10 @@ revokes it alone:
     GET  /tt/claude/blocks?key=KEY[&days=1|&start=..&end=..][&tz=..]
         Every stretch spent in Claude with the sessions, what was typed, and a
         label, summary and kind of what was actually going on.
+    GET  /tt/story?key=KEY[&day=YYYY-MM-DD][&refresh=1]
+        The story of the day (today by default), written from all of its
+        data at midday and once the day is verifiably over, newest first. refresh=1 (not with a read
+        key) writes one now (daystory.py).
     GET  /tt/coverage?key=KEY[&days=7][&tz=..]
         What arrived per local day (counts per kind, devices) and every TT
         Watch run with its first and last line (coverage.py).
@@ -72,7 +76,7 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import activity, awsync, claudelog, coverage, mcp
+from . import activity, awsync, claudelog, coverage, daystory, mcp
 from .whoop import Whoop
 from .fusion import fuse
 from .labels import Labeler
@@ -401,6 +405,21 @@ def make_handler(relay: Relay, key: str, aw_url: str, aw_api_key: str | None, in
                     return self.send(200, claudelog.blocks(relay.aw, relay.store, labeler, q))
                 except ValueError as e:
                     return self.send(400, f"{e}\n")
+            if path == "/tt/story":
+                if not self.authorized(read=True):
+                    return self.challenge()
+                q = self.query()
+                day = q.get("day") or daystory.today(datetime.now(timezone.utc))
+                if q.get("refresh") == "1":
+                    if self.agent is not None:
+                        return self.send(403, "a read key can't write stories\n")
+                    if relay.aw is None or labeler is None:
+                        return self.send(503, "no ActivityWatch or no LLM provider\n")
+                    try:
+                        daystory.write_now(relay, whoop, labeler, day)
+                    except Exception as e:
+                        return self.send(502, f"{type(e).__name__}: {e}\n")
+                return self.send(200, {"day": day, "stories": daystory.stories(relay.store, day)})
             if path == "/tt/coverage":
                 if not self.authorized(read=True):
                     return self.challenge()
@@ -619,6 +638,7 @@ def main(argv=None) -> None:
         whoop = Whoop(os.path.join(data, "whoop.db"), os.environ["TT_WHOOP_CLIENT_ID"],
                       os.environ["TT_WHOOP_CLIENT_SECRET"], key, log=log)
         threading.Thread(target=whoop.run_forever, daemon=True).start()
+    daystory.start(relay, whoop, labeler, log=log)
     server = ThreadingHTTPServer((host, port), make_handler(relay, key, aw_url, aw_api_key, ingest_key, dashboard,
                                                             labeler, read_keys, whoop,
                                                             os.environ.get("TT_PUBLIC_URL")))

@@ -54,8 +54,9 @@ class ClaudeLog(unittest.TestCase):
 
         def call(p, system, user):
             ids = json.loads(user)
-            return json.dumps({b: {"label": "TT Watch keep-alive", "summary": "Fixing tracker tooling.",
-                                   "kind": "tinkering"} for b in ids})
+            return json.dumps({b: {"project": "TimeTracker", "label": "Phone keep-alive",
+                                   "summary": "Fixing tracker tooling.", "kind": "tinkering",
+                                   "verdict": "mixed"} for b in ids})
 
         labeler = Labeler(f"{self.dir.name}/labels.db", chain=chain, call=call)
         q = {"start": "2026-11-01T10:00:00-08:00", "end": "2026-11-01T11:40:00-08:00", "tz": "America/Los_Angeles"}
@@ -65,7 +66,8 @@ class ClaudeLog(unittest.TestCase):
         self.assertEqual(first["seconds"], 26 * 60)
         self.assertEqual([t["text"] for t in first["typed"]], ["make TT Watch restart itself", "no, one key"])
         self.assertEqual(first["sessions"][0]["you"], 2)
-        self.assertEqual((first["label"], first["kind"]), ("TT Watch keep-alive", "tinkering"))
+        self.assertEqual((first["label"], first["project"], first["goal"], first["kind"], first["verdict"]),
+                         ("TimeTracker: Phone keep-alive", "TimeTracker", "Phone keep-alive", "tinkering", "mixed"))
         self.assertIsNone(second["label"])  # nothing typed: no label
         # Cached: a second call asks nobody.
         labeler.call = lambda *a: self.fail("asked the model again")

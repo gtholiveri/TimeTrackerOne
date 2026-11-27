@@ -80,9 +80,21 @@ export interface ClaudeBlock {
   where: Record<string, number>;
   sessions: { title: string; surface: string; you: number; claude: number }[];
   typed: { ts: string; session: string; text: string }[];
+  /** "project: goal", or the older free-form label. */
   label: string | null;
+  project?: string | null;
+  goal?: string | null;
   summary: string | null;
   kind: string | null;
+  verdict?: "productive" | "mixed" | "unproductive" | null;
+}
+
+/** The story of a day, from /tt/story: Markdown written at about 1 PM and 9 PM. */
+export interface DayStory {
+  slot: string;
+  created: string;
+  model: string | null;
+  text: string;
 }
 
 export interface ClaudeBlocks {
@@ -151,6 +163,8 @@ export const api = {
   state: (hours = 1) => request<TTState>(`/tt/state?hours=${hours}`),
   activity: (start: number, end: number, view: "attention" | "devices" = "devices") =>
     request<ActivityAnswer>(`/tt/activity?start=${enc(start)}&end=${enc(end)}&view=${view}`),
+  stories: (day: string, refresh = false) =>
+    request<{ day: string; stories: DayStory[] }>(`/tt/story?day=${day}${refresh ? "&refresh=1" : ""}`),
   claudeBlocks: (start: number, end: number) =>
     request<ClaudeBlocks>(`/tt/claude/blocks?start=${enc(start)}&end=${enc(end)}`),
   /** Raw phone lines, "tt|key=value|..." one per line. */

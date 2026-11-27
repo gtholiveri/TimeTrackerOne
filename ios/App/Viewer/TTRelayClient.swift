@@ -32,14 +32,14 @@ struct TTRelayClient {
         return TTRelayClient(base: base, key: key)
     }
 
-    func data(_ path: String, _ query: [String: String] = [:]) async throws -> Data {
+    func data(_ path: String, _ query: [String: String] = [:], timeout: TimeInterval = 30) async throws -> Data {
         var parts = URLComponents(url: base.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty {
             parts.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
             // "+" in a time offset would read as a space.
             parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         }
-        var request = URLRequest(url: parts.url!, timeoutInterval: 30)
+        var request = URLRequest(url: parts.url!, timeoutInterval: timeout)
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await URLSession.shared.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -49,8 +49,9 @@ struct TTRelayClient {
         return data
     }
 
-    func decode<T: Decodable>(_ type: T.Type, _ path: String, _ query: [String: String] = [:]) async throws -> T {
-        try JSONDecoder().decode(T.self, from: try await data(path, query))
+    func decode<T: Decodable>(_ type: T.Type, _ path: String, _ query: [String: String] = [:],
+                              timeout: TimeInterval = 30) async throws -> T {
+        try JSONDecoder().decode(T.self, from: try await data(path, query, timeout: timeout))
     }
 
     func json(_ path: String, _ query: [String: String] = [:]) async throws -> Any {

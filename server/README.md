@@ -229,6 +229,7 @@ running on 5600, leave out `TT_AW_COMMAND`.
 | `TT_AW_API_KEY` | | If ActivityWatch itself has `[auth] api_key` set. |
 | `TT_DASHBOARD` | `dashboard/dist` | The built dashboard served at `/app/`. |
 | `TT_LLM_ANTHROPIC_KEY` | | Gabriel's own Anthropic API key. When set, Claude Haiku 5.5 writes the labels first (`TT_LLM_ANTHROPIC_MODEL` overrides). |
+| `TT_STORY_MODEL` | `claude-sonnet-5-5` | The Anthropic model that writes the story of the day (`/tt/story`, daystory.py): once 6 hours into the day, and once the day is verifiably over (every device quiet for 2 hours past 6 PM). Other providers use their own model. |
 | `TT_LLM_GROQ_KEY`, `TT_LLM_CEREBRAS_KEY`, `TT_LLM_GEMINI_KEY`, `TT_LLM_MISTRAL_KEY`, `TT_LLM_OPENROUTER_KEY` | | Free-tier keys for block labels, tried in this order. |
 | `TT_LLM_<NAME>_MODEL` | (below) | A different model for that provider (`GROQ`, `LLM7`, ...). |
 | `TT_LLM_LLM7_KEY` | | Optional free LLM7 token, for higher limits. |

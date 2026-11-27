@@ -16,6 +16,7 @@ struct FusedDayView: View {
         NavigationStack {
             List {
                 Section { DayPicker(day: $day) }
+                StorySection(day: day, stories: $data.stories)
                 if !data.errors.isEmpty {
                     Section {
                         ForEach(data.errors, id: \.self) { Text($0).font(.footnote).foregroundStyle(.secondary) }
@@ -133,6 +134,7 @@ struct FusedDay {
     var whoop: [[String: Any]] = []
     var visits: [Visit] = []
     var watchRuns: [Run] = []
+    var stories: [DayStory] = []
     var totals: [(String, Double)] = []
     var errors: [String] = []
 
@@ -159,6 +161,9 @@ struct FusedDay {
         async let blocks = client.decode(ClaudeBlocks.self, "tt/claude/blocks", range)
         async let whoopAll = client.json("tt/whoop", ["days": "\(daysBack)"])
         async let phone = DayLines.load(day, kinds: ["visit", "motion", "start", "beat", "change", "end"])
+        async let story = client.decode(DayStories.self, "tt/story", ["day": day])
+
+        do { out.stories = try await story.stories } catch { out.errors.append("Story: \(error.localizedDescription)") }
 
         // Screen time per device.
         do {
@@ -320,9 +325,14 @@ struct ClaudeBlock: Decodable, Identifiable {
     let devices: [String: Double]?
     let sessions: [Session]
     let typed: [Typed]
+    /// "project: goal", or an older free-form label.
     let label: String?
+    let project: String?
+    let goal: String?
     let summary: String?
     let kind: String?
+    /// productive, mixed or unproductive.
+    let verdict: String?
     var id: String { start }
     var startDate: Date? { TTTime.parse(start) }
     var endDate: Date? { TTTime.parse(end) }
@@ -340,10 +350,18 @@ struct ClaudeBlockRow: View {
                     Text(k).font(.caption2.weight(.semibold)).padding(.horizontal, 6).padding(.vertical, 1)
                         .background(FusedDay.color(kind: k).opacity(0.2), in: Capsule())
                 }
+                if let v = block.verdict {
+                    Text(v).font(.caption2)
+                        .foregroundStyle(v == "productive" ? Color.green : v == "unproductive" ? Color.red : Color.secondary)
+                }
                 Spacer()
                 Text(TTTime.duration(block.seconds)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
-            Text(block.label ?? (block.typed.isEmpty ? "Nothing typed" : "Not labeled yet")).font(.headline)
+            if let p = block.project, let g = block.goal {
+                (Text(p).bold() + Text(" · " + g)).font(.headline)
+            } else {
+                Text(block.label ?? (block.typed.isEmpty ? "Nothing typed" : "Not labeled yet")).font(.headline)
+            }
             if let s = block.summary, !s.isEmpty { Text(s).font(.subheadline) }
             let titles = block.sessions.compactMap(\.title).filter { !$0.isEmpty }
             if !titles.isEmpty {
@@ -430,5 +448,99 @@ private struct PickedBar: View {
             Text(bar.title).font(.subheadline.weight(.semibold))
             if !bar.detail.isEmpty { Text(bar.detail).font(.caption) }
         }
+    }
+}
+
+// MARK: - the story of the day
+
+struct DayStories: Decodable {
+    let day: String
+    let stories: [DayStory]
+}
+
+struct DayStory: Decodable, Hashable {
+    let slot: String
+    let created: String
+    let model: String?
+    let text: String
+}
+
+/// The relay's story of the day (newest first): written 6 hours into the day and
+/// once the day is verifiably over. "Write it now" asks for one on the spot.
+private struct StorySection: View {
+    let day: String
+    @Binding var stories: [DayStory]
+    @State private var shown = 0
+    @State private var writing = false
+    @State private var error: String?
+
+    var body: some View {
+        Section {
+            if let s = stories.indices.contains(shown) ? stories[shown] : nil {
+                StoryText(text: s.text)
+                Text("Written \(TTTime.clock(TTTime.parse(s.created))) (\(s.slot))")
+                    .font(.caption2).foregroundStyle(.secondary)
+                if stories.count > 1 {
+                    Picker("Version", selection: $shown) {
+                        ForEach(stories.indices, id: \.self) { i in
+                            Text("\(stories[i].slot) \(TTTime.clock(TTTime.parse(stories[i].created)))").tag(i)
+                        }
+                    }
+                }
+            } else {
+                Text("No story yet. One is written 6 hours into the day, and the last once you've been off every screen for 2 hours after 6 PM.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+            Button(writing ? "Writing…" : "Write it now") { Task { await write() } }.disabled(writing)
+        } header: {
+            Text("The story of the day")
+        }
+        .onChange(of: day) { shown = 0 }
+    }
+
+    private func write() async {
+        writing = true
+        error = nil
+        defer { writing = false }
+        do {
+            let client = try TTRelayClient.fromSettings()
+            stories = try await client.decode(DayStories.self, "tt/story", ["day": day, "refresh": "1"], timeout: 120).stories
+            shown = 0
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}
+
+/// The little Markdown a story uses: ### headings, - bullets, **bold**.
+private struct StoryText: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(text.components(separatedBy: "\n").enumerated()), id: \.offset) { _, raw in
+                let line = raw.trimmingCharacters(in: .whitespaces)
+                if line.hasPrefix("#") {
+                    Text(inline(line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)))
+                        .font(.headline).padding(.top, 4)
+                } else if line.hasPrefix("- ") || line.hasPrefix("* ") {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("•")
+                        Text(inline(String(line.dropFirst(2))))
+                    }
+                    .font(.subheadline)
+                } else if !line.isEmpty {
+                    Text(inline(line)).font(.subheadline)
+                }
+            }
+        }
+        .textSelection(.enabled)
+        .padding(.vertical, 2)
+    }
+
+    private func inline(_ s: String) -> AttributedString {
+        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(s)
     }
 }
