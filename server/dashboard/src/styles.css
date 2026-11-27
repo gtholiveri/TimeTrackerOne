@@ -798,7 +798,8 @@ table.data .clip {
   color: var(--bad-text);
 }
 
-.verdict-mixed {
+.verdict-mixed,
+.verdict-unclear {
   color: var(--muted);
 }
 

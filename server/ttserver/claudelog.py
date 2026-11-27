@@ -13,7 +13,7 @@ Claude Code, the phone app), and attaches the messages written during it:
 which sessions, what he typed, and a structured label written by the same
 LLM chain as the dashboard's labels and cached: project, goal (label is
 "project: goal"), kind (building, debugging, planning, ..., tinkering,
-venting), verdict (productive, mixed, unproductive) and a one-sentence
+venting), verdict (productive, mixed, unproductive, unclear) and a one-sentence
 summary. A block is a whole sitting: time away from Claude under 20 minutes
 doesn't end it.
 """
@@ -52,8 +52,8 @@ MIN_BLOCK = 60         # seconds of Claude in a block, or it's dropped
 SLACK = timedelta(minutes=2)  # messages this close to a block's edges belong to it
 KINDS = ["building", "debugging", "planning", "research", "learning", "writing", "admin",
          "tinkering", "venting", "other"]
-VERDICTS = ["productive", "mixed", "unproductive"]
-LABEL_VERSION = "claude2"  # bump when SYSTEM changes, so cached labels are redone
+VERDICTS = ["productive", "mixed", "unproductive", "unclear"]
+LABEL_VERSION = "claude3"  # bump when SYSTEM changes, so cached labels are redone
 
 
 def ensure(store) -> None:
@@ -160,18 +160,28 @@ def blocks(aw, store, labeler, q: dict[str, str]) -> dict:
 SYSTEM = (
     "You label blocks of someone's own Claude usage for their personal time tracker. Each block is one sitting "
     "(possibly over an hour, across several sessions): how long it lasted, the session titles, the messages "
-    "they typed, and the end of Claude's replies.\n\n"
-    "Label the sitting as a whole, at the level of the project and the goal, not the individual steps or "
-    "fixes. Several sessions on one project are one goal. Be blunt: if it was fiddling with tooling, arguing "
-    "with the assistant, redoing setup or a distraction, say so.\n\n"
+    "they typed, and the last few of Claude's replies, cut short.\n\n"
+    "This is a thin slice of what happened, not the whole record. Most of the work lands outside these "
+    "messages: files and code Claude changed, documents and artifacts it edited, things deployed or sent. "
+    "Many messages are not typed by hand: forwarded comments from documents or artifacts, notifications, "
+    "automated check-ins. These normally get acted on with edits, not a reply, so a run of messages with "
+    "little or no answer is normal and says nothing about failure. Never conclude that nothing was "
+    "accomplished, or that something was broken, from missing replies or missing detail. Judge the outcome "
+    "only from positive evidence (Claude saying it shipped, fixed, wrote or found something; the person "
+    "confirming it); without that, the verdict is unclear.\n\n"
+    "Label the sitting as a whole: where the attention went (the project and the goal, not the individual "
+    "steps) and whether good came out of it. Several sessions on one project are one goal. Be honest: if "
+    "the evidence shows it was fiddling with tooling, arguing with the assistant, redoing setup or a "
+    "distraction, say so; if it doesn't show either way, don't guess.\n\n"
     "Answer with only a JSON object mapping each block id to an object with exactly these fields:\n"
     "- \"project\": the project's short everyday name, the same name every time it comes up (for example "
     "\"TimeTracker\", \"Hermes\", \"PHYS 152\"); \"Personal\" or \"Misc\" if there is none.\n"
     "- \"label\": 2 to 5 words naming the goal, without the project name (\"Phone keep-alive\", "
     "\"Lab 6 report\").\n"
     "- \"kind\": one of " + ", ".join(KINDS) + ".\n"
-    "- \"verdict\": one of " + ", ".join(VERDICTS) + ".\n"
-    "- \"summary\": one sentence of at most 20 words: what they set out to do, then how it went.\n"
+    "- \"verdict\": one of " + ", ".join(VERDICTS) + " (unclear when the messages don't show the outcome).\n"
+    "- \"summary\": one sentence of at most 20 words: what the attention went to, and what came of it "
+    "as far as the evidence shows.\n"
     "No other text, no markdown."
 )
 
@@ -182,7 +192,7 @@ def _block_prompt(b: dict) -> dict:
     return {"minutes": round(b["seconds"] / 60, 1),
             "sessions": [s["title"] for s in b["sessions"] if s["title"]][:6],
             "typed": [m["text"][:300] for m in you[:15]],
-            "claude_said": [m["text"][:200] for m in claude[-3:]]}
+            "claude_said": [m["text"][:400] for m in claude[-6:]]}
 
 
 def describe(labeler, result: list[dict]) -> list[str]:

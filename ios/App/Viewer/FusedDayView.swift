@@ -331,7 +331,7 @@ struct ClaudeBlock: Decodable, Identifiable {
     let goal: String?
     let summary: String?
     let kind: String?
-    /// productive, mixed or unproductive.
+    /// productive, mixed, unproductive or unclear.
     let verdict: String?
     var id: String { start }
     var startDate: Date? { TTTime.parse(start) }

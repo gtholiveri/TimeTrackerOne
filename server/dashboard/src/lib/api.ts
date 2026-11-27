@@ -86,7 +86,7 @@ export interface ClaudeBlock {
   goal?: string | null;
   summary: string | null;
   kind: string | null;
-  verdict?: "productive" | "mixed" | "unproductive" | null;
+  verdict?: "productive" | "mixed" | "unproductive" | "unclear" | null;
 }
 
 /** The story of a day, from /tt/story: Markdown written at about 1 PM and 9 PM. */

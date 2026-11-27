@@ -50,7 +50,7 @@ TOOLS = [
            "min_seconds": {"type": "number", "description": "Drop segments shorter than this."}}),
     _tool("get_claude_blocks", "Every stretch Gabe spent in Claude (desktop, claude.ai, Claude Code, phone) with "
           "the sessions, what he typed, and a structured label of each sitting: project, goal, kind, verdict "
-          "(productive, mixed, unproductive) and a one-line summary.",
+          "(productive, mixed, unproductive, unclear) and a one-line summary.",
           {**_RANGE}),
     _tool("get_day_story", "The story of a day: what happened, written from all of the day's data at midday "
           "and once the day is verifiably over (asleep: WHOOP's sleep, or every device quiet 4 h through 2-8 AM) (headline, how it went, numbers, worth noticing). Newest first.",
